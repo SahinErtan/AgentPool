@@ -61,6 +61,8 @@ interface Character {
   /** The lounger it belongs to, when it has one. */
   loungerSlot: number | null;
   waitingSlot: number | null;
+  /** The place in the queue at the gate. */
+  gateQueue: number;
   /** Where it goes when it climbs out of the water. */
   exitTarget: string;
   /** Where it is heading. */
@@ -339,6 +341,7 @@ export class PoolScene {
       desired: 'unknown',
       loungerSlot: null,
       waitingSlot: null,
+      gateQueue: 0,
       lastLimit: Number.POSITIVE_INFINITY,
       moveDir: 0,
       exitTarget: 'lounger:0',
@@ -423,7 +426,18 @@ export class PoolScene {
 
     if (character.desired === 'waiting') {
       const slot = Number(props.waiting ?? -1);
-      if (slot < 0 || !this.layout.waiting[slot]) return;
+      if (slot < 0 || !this.layout.waiting[slot]) {
+        // Not even the pool edge has a place: the agent waits at the gate.
+        // The queue tells it where in the line it stands.
+        const queue = Number(props.queue ?? 0);
+        if (character.gateQueue !== queue || character.target === null) {
+          character.gateQueue = queue;
+          character.waitingSlot = null;
+          character.loungerSlot = null;
+          character.state = 'walking';
+        }
+        return;
+      }
       if (character.waitingSlot !== slot) {
         character.waitingSlot = slot;
         character.loungerSlot = null;
@@ -498,7 +512,7 @@ export class PoolScene {
         // The agent has no lounger: it waits at the pool edge until one
         // frees up. When even the edge is full it waits at the gate.
         const slot = character.waitingSlot;
-        character.target = slot === null ? 'gate' : `waiting:${slot}`;
+        character.target = slot === null ? `gate:${character.gateQueue}` : `waiting:${slot}`;
         if (character.state !== 'walking') {
           const spot = slot === null ? null : this.layout.waiting[slot];
           character.state = 'resting';
@@ -711,7 +725,7 @@ export class PoolScene {
       // Arrive at the *offset* target, otherwise the character oscillates
       // around it and never registers as arrived.
       character.x = target.x + offset;
-      if (character.target === 'gate') {
+      if (character.target?.startsWith('gate')) {
         if (character.desired === 'waiting') {
           // The pool is full: the character waits at the gate instead of
           // walking out of the scene.

@@ -170,8 +170,14 @@ export function resolveWaypoint(
   layout: PoolLayout,
   waypoint: string,
 ): { x: number; y: number } | null {
-  if (waypoint === 'gate') {
-    return { x: layout.gate.x + layout.gate.w / 2, y: layout.deckY };
+  if (waypoint === 'gate' || waypoint.startsWith('gate:')) {
+    // The queue at the gate spreads out, so the agents do not stand on top
+    // of each other.
+    const queue = waypoint.startsWith('gate:') ? Number(waypoint.slice(5)) : 0;
+    return {
+      x: layout.gate.x + layout.gate.w / 2 + queue * layout.characterHeight * 0.24,
+      y: layout.deckY,
+    };
   }
   if (waypoint === 'ladder') {
     return { x: layout.ladder.x + layout.ladder.w / 2, y: layout.deckY };

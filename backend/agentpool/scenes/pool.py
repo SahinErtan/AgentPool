@@ -39,6 +39,9 @@ class PoolScene:
         self._route_of: Dict[str, Dict[str, Any]] = {}
         self._waiting_of: Dict[str, int] = {}
         self._waiting_occupant: Dict[int, str] = {}
+        # The agents that have neither a lounger nor a waiting spot. They
+        # stand at the gate until a place frees up.
+        self._overflow: List[str] = []
         # The agents whose presentation changed without a lifecycle event.
         self._dirty: set[str] = set()
 
@@ -124,7 +127,10 @@ class PoolScene:
         """There is no free lounger, so the agent waits at the pool edge."""
         slot = self._take_waiting(agent.id)
         if slot is None:
-            # Even the pool edge is full: the agent stays at the gate.
+            # Even the pool edge is full: the agent waits at the gate, in the
+            # queue for the first place that frees up.
+            if agent.id not in self._overflow:
+                self._overflow.append(agent.id)
             self._assign_route(agent, from_point=GATE, to_point=GATE, route="wait")
             return
         self._assign_route(
@@ -146,13 +152,18 @@ class PoolScene:
         slot = self._waiting_of.pop(agent_id, None)
         if slot is not None and self._waiting_occupant.get(slot) == agent_id:
             del self._waiting_occupant[slot]
+        if agent_id in self._overflow:
+            self._overflow.remove(agent_id)
 
     def _promote_waiting(self) -> None:
-        """A lounger became free: the agent that waited the longest takes it."""
-        if not self._waiting_occupant:
+        """A lounger became free: the agent that waited the longest takes it.
+
+        The agents at the pool edge go first; the ones that wait at the gate
+        take what is left.
+        """
+        agent_id = self._next_in_queue()
+        if agent_id is None:
             return
-        slot = min(self._waiting_occupant)
-        agent_id = self._waiting_occupant[slot]
         lounger = self._take_lounger(agent_id)
         if lounger is None:
             return
@@ -163,6 +174,13 @@ class PoolScene:
             "route": "walk",
         }
         self._dirty.add(agent_id)
+
+    def _next_in_queue(self) -> Optional[str]:
+        if self._waiting_occupant:
+            return self._waiting_occupant[min(self._waiting_occupant)]
+        if self._overflow:
+            return self._overflow[0]
+        return None
 
     def take_dirty(self) -> List[str]:
         """The agents whose presentation changed without a lifecycle event."""
@@ -221,6 +239,7 @@ class PoolScene:
             "speed_scale": 1.0,
             "lounger": lounger,
             "waiting": waiting,
+            "queue": self._overflow.index(agent.id) if agent.id in self._overflow else 0,
             "route": route.get("route"),
             "from": route.get("from"),
             "to": route.get("to"),

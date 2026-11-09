@@ -38,6 +38,8 @@ class StadiumScene:
         self._bench_occupant: Dict[int, str] = {}
         self._waiting_of: Dict[str, int] = {}
         self._waiting_occupant: Dict[int, str] = {}
+        # The agents that have neither a bench nor a waiting spot.
+        self._overflow: List[str] = []
         self._route_of: Dict[str, Dict[str, Any]] = {}
         self._dirty: set[str] = set()
 
@@ -136,10 +138,14 @@ class StadiumScene:
         slot = self._waiting_of.pop(agent_id, None)
         if slot is not None and self._waiting_occupant.get(slot) == agent_id:
             del self._waiting_occupant[slot]
+        if agent_id in self._overflow:
+            self._overflow.remove(agent_id)
 
     def _send_to_waiting(self, agent: AgentState) -> None:
         slot = self._take_waiting(agent.id)
         if slot is None:
+            if agent.id not in self._overflow:
+                self._overflow.append(agent.id)
             self._assign_route(agent, from_point=GATE, to_point=GATE, route="wait")
             return
         self._assign_route(
@@ -147,10 +153,12 @@ class StadiumScene:
         )
 
     def _promote_waiting(self) -> None:
-        if not self._waiting_occupant:
+        if self._waiting_occupant:
+            agent_id = self._waiting_occupant[min(self._waiting_occupant)]
+        elif self._overflow:
+            agent_id = self._overflow[0]
+        else:
             return
-        slot = min(self._waiting_occupant)
-        agent_id = self._waiting_occupant[slot]
         bench = self._take_bench(agent_id)
         if bench is None:
             return
@@ -217,6 +225,7 @@ class StadiumScene:
             "speed_scale": 1.0,
             "bench": bench,
             "waiting": waiting,
+            "queue": self._overflow.index(agent.id) if agent.id in self._overflow else 0,
             "route": route.get("route"),
             "from": route.get("from"),
             "to": route.get("to"),
