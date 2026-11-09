@@ -398,3 +398,91 @@ body {
     min-height: 55%;
   }
 }
+
+/* --- Less motion ----------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .toast {
+    transition: none;
+  }
+}
+
+/* --- The inspector's event ring --------------------------------------- */
+
+.inspector__ring {
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid #1d3a52;
+}
+
+.inspector__ring h3 {
+  margin: 0 0 0.4rem;
+  font-size: 11px;
+  color: #5c7d92;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.inspector__ring ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.inspector__ring li {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr 3.5rem;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.inspector__event-type {
+  color: #52d273;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 10px;
+}
+
+.inspector__event-detail {
+  color: #b9d6e6;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector__event-time {
+  color: #5c7d92;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 10px;
+  text-align: right;
+}
+
+.inspector__empty,
+.inspector__footnote {
+  margin: 0.2rem 0 0;
+  color: #5c7d92;
+  font-size: 11px;
+}
+
+.inspector__footnote code {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 10px;
+}
+
+.legend__hint {
+  color: #5c7d92;
+}
+
+.legend__group strong {
+  color: #dff2ff;
+  font-weight: 600;
+}

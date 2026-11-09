@@ -26,6 +26,7 @@ import {
   type PoolLayout,
 } from './layout';
 import { Ambience } from './ambience';
+import { prefersReducedMotion } from '../motion';
 import { SleepZ, SpeechBubble, Steam } from '../characters/effects';
 import {
   drawDeck,
@@ -632,14 +633,22 @@ export class PoolScene {
     this.steam.update(dt);
     this.sleepZ.update(dt);
     this.bubble.update(dt);
-    this.ambience.update(dt);
+
+    // The decoration stops when the screen asks for less motion. The
+    // characters keep moving: that is what the pool is for.
+    const reduced = prefersReducedMotion();
+    if (!reduced) {
+      this.ambience.update(dt);
+    }
 
     // The caustics drift.
     if (this.causticA && this.causticB) {
-      this.causticA.tilePosition.x = this.time * 7;
-      this.causticA.tilePosition.y = this.time * 3;
-      this.causticB.tilePosition.x = -this.time * 5;
-      this.causticB.tilePosition.y = this.time * 9;
+      if (!reduced) {
+        this.causticA.tilePosition.x = this.time * 7;
+        this.causticA.tilePosition.y = this.time * 3;
+        this.causticB.tilePosition.x = -this.time * 5;
+        this.causticB.tilePosition.y = this.time * 9;
+      }
       this.causticA.width = this.layout.water.w * 1.4;
       this.causticA.height = this.layout.water.h * 1.4;
       this.causticB.width = this.layout.water.w * 1.8;
@@ -649,7 +658,7 @@ export class PoolScene {
     }
 
     this.foam.clear();
-    drawFoam(this.foam, this.layout, this.time);
+    drawFoam(this.foam, this.layout, reduced ? 0 : this.time);
 
     if (this.debugText) {
       this.debugText.text = [

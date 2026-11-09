@@ -74,9 +74,57 @@ export function Inspector() {
         <Row label="Started" value={formatTime(agent.started_at)} />
         <Row label="Finished" value={formatTime(agent.finished_at)} />
         <Row label="Duration" value={formatDuration(agent.started_at, agent.finished_at)} />
+        <Row label="Tool use" value={agent.tool_use_id ?? '—'} />
+        <Row label="Created" value={formatTime(agent.created_at)} />
+        <Row label="Last event" value={formatTime(agent.last_event_at)} />
+        <Row label="Leaves at" value={formatTime(agent.leaving_deadline)} />
         <Row label="Events" value={String(agent.event_count)} />
         <Row label="Id" value={agent.id} />
       </div>
+
+      <EventRing agentId={agent.id} sessionId={agent.session_id} />
     </section>
+  );
+}
+
+/**
+ * What happened to this agent, most recent first.
+ *
+ * The backend keeps a feed of the session events; the ones that belong to
+ * this agent are the ones that share its session.
+ */
+function EventRing({ agentId, sessionId }: { agentId: string; sessionId: string | null }) {
+  const { feed } = useStore();
+  const events = feed
+    .filter((event) => (sessionId ? event.session_id === sessionId : false))
+    .slice(0, 12);
+
+  if (events.length === 0) {
+    return (
+      <div className="inspector__ring">
+        <h3>Events</h3>
+        <p className="inspector__empty">Nothing yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="inspector__ring">
+      <h3>Events</h3>
+      <ul>
+        {events.map((event) => (
+          <li key={event.event_id}>
+            <span className="inspector__event-type">{event.type}</span>
+            <span className="inspector__event-detail">{event.detail ?? ''}</span>
+            <span className="inspector__event-time">
+              {new Date(event.ts * 1000).toLocaleTimeString()}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="inspector__footnote">
+        The id of this agent is <code>{agentId}</code>.
+      </p>
+    </div>
   );
 }
