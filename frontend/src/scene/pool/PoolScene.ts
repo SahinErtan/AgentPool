@@ -653,7 +653,7 @@ export class PoolScene {
 
     if (this.debugText) {
       this.debugText.text = [
-        `canvas ${this.layout.width}x${this.layout.height} loungers=${this.layout.loungers.length} waiting=${this.layout.waiting.length} deckY=${this.layout.deckY} surfaceY=${this.layout.surfaceY} dt=${this.lastDt} time=${this.time.toFixed(2)}`,
+        `fps ${Math.round(this.app.ticker.FPS)}  canvas ${this.layout.width}x${this.layout.height} loungers=${this.layout.loungers.length} waiting=${this.layout.waiting.length} deckY=${this.layout.deckY} surfaceY=${this.layout.surfaceY} dt=${this.lastDt} time=${this.time.toFixed(2)}`,
         ...[...this.characters.values()]
         .map(
           (c) =>

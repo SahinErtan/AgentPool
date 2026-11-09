@@ -20,9 +20,10 @@ The **bridge** never mentions a pool, a lane, a lounger or a gate. It converts C
 payloads into a stable event/snapshot schema and asks a **scene adapter** to translate agent state
 into *scene state* plus *placement*.
 
-A future "stadium" or "office" project installs the bridge, writes `class StadiumScene(SceneAdapter)`
-and ships its own frontend renderer. **Zero changes to `bridge/`.** That property is enforced by
-`tests/test_bridge_is_scene_agnostic.py`, which greps the bridge for forbidden vocabulary.
+AgentPool has one scene — the pool. A "stadium" or "office" project installs the bridge, writes its
+own `SceneAdapter` and ships its own frontend renderer. **Zero changes to `bridge/`.** That property
+is enforced by `tests/test_bridge_is_scene_agnostic.py`, which greps the bridge for forbidden
+vocabulary, and `docs/porting.md` lists the files to lift.
 
 **Placement lives on the server.** Two open browser tabs must agree on who is in which lane, so the
 backend owns the world model (slots, routes) and the frontend owns the pixels.

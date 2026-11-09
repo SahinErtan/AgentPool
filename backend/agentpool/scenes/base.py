@@ -1,8 +1,9 @@
 """The scene adapter: the seam that makes the bridge reusable.
 
 A scene translates the generic agent lifecycle into *scene state* and decides
-*where in the scene* each agent belongs. A future stadium project implements
-this protocol and nothing else changes.
+*where in the scene* each agent belongs. The pool is the scene here; another
+project — a stadium, an office — implements this protocol and lifts the
+bridge unchanged. See ``docs/porting.md``.
 """
 
 from __future__ import annotations
@@ -20,8 +21,8 @@ class SceneState(str, Enum):
     OFFSCREEN = "offscreen"  # not in the scene yet
     ENTERING = "entering"  # walking in through the entrance
     WALKING = "walking"  # moving around the scene
-    RESTING = "resting"  # pool: lounge | stadium: bench
-    ACTIVE = "active"  # pool: swimming | stadium: running
+    RESTING = "resting"  # the agent has a place to sit
+    ACTIVE = "active"  # the agent is doing its work
     EXITING = "exiting"  # leaving the scene
     WAITING = "waiting"  # blocked, needs input
 

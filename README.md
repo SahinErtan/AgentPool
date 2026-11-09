@@ -72,6 +72,7 @@ The parts are documented in `docs/`:
 - [the hook events](docs/hook-events.md)
 - [the lifecycle of an agent](docs/lifecycle.md)
 - [the scenes](docs/scenes.md)
+- [porting the bridge to another project](docs/porting.md)
 - [the architecture](docs/architecture.md)
 - [the sprint plan](docs/sprints.md)
 
@@ -80,7 +81,6 @@ The parts are documented in `docs/`:
 | Variable | Default | What it does |
 |---|---|---|
 | `AGENTPOOL_PORT` | `38000` | The port the backend listens on. |
-| `AGENTPOOL_SCENE` | `pool` | The scene: `pool` or `stadium`. |
 | `AGENTPOOL_IDLE_TTL_S` | `90` | How long an idle agent is kept. |
 | `AGENTPOOL_SESSION_TTL_S` | `900` | How long a silent session is kept. |
 | `AGENTPOOL_EXIT_GRACE_S` | `30` | How long a closing agent may take to walk out. |

@@ -9,13 +9,10 @@ from .pool import PoolScene
 def build_scene(scene_id: str) -> SceneAdapter:
     """Return the scene adapter for ``scene_id``.
 
-    A future project registers its own scene here; nothing else in the
-    backend has to change.
+    AgentPool has one scene: the pool. A different project — a stadium, an
+    office — brings its own scene and registers it here, or builds it in its
+    own copy of the backend. The bridge never changes.
     """
     if scene_id == "pool":
         return PoolScene()
-    if scene_id == "stadium":
-        from .stadium import StadiumScene
-
-        return StadiumScene()
     raise ValueError(f"unknown scene {scene_id!r}")

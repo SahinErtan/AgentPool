@@ -47,6 +47,7 @@ export function PoolCanvas() {
         // A handle for the browser console, so the scene can be inspected
         // while it runs.
         (window as unknown as { __agentpool?: unknown }).__agentpool = scene;
+        (window as unknown as { __agentpoolApp?: unknown }).__agentpoolApp = app;
 
         const unsubscribe = store.subscribe(() => {
           scene?.syncAgents([...store.get().agents.values()]);

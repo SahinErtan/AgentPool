@@ -14,7 +14,7 @@ unit. Every sprint ends with something you can *see* or *measure* — never with
 | **5** | Characters in the scene | Agents swim, lounge, walk in through the gate and leave through it |
 | **6** | Idle activities + ambience | The loungers are alive: tea, books, naps, steam, birds, petals |
 | **7** | Plugin packaging | `make install` registers the plugin; the UI comes up with any session |
-| **8** | Inspector, responsive, modularity proof, docs | The stadium stub works without touching the bridge |
+| **8** | Inspector, responsive, the reuse kit, docs | The porting guide tells another project exactly what to lift |
 
 ## Sprint 2 — the bridge, tested
 
@@ -77,9 +77,15 @@ unit. Every sprint ends with something you can *see* or *measure* — never with
 ## Sprint 8 — polish and the modularity proof
 
 - `ui/Inspector.tsx`, `ui/Legend.tsx`, `ui/Toast.tsx`, responsive layout.
-- `scenes/stadium.py` — a second scene, proving the seam.
-- `tests/test_bridge_is_scene_agnostic.py` — the architecture guard.
-- `tests/test_stadium_scene.py` — the stadium has its own tests.
+- `tests/test_bridge_is_scene_agnostic.py` — the architecture guard: the
+  bridge never names a scene.
+- `docs/porting.md` — the reuse kit: which files another project lifts and
+  what it has to write itself.
+
+A second scene (a stadium) was built to prove the seam and then removed
+again: the pool is the only scene in this repository, and the stadium is a
+separate project that lifts the bridge. What stays is the contract — the
+adapter protocol, the shared vocabulary and the architecture guard.
 - `README.md`, `docs/hook-events.md`, `docs/lifecycle.md`, `docs/scenes.md`.
 
 The sprint also turned up a bug that only showed in one browser: the masked
