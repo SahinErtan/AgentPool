@@ -73,3 +73,120 @@ body {
   font-size: 12px;
   border-radius: 4px;
 }
+
+/* --- App shell ---------------------------------------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: #08131c;
+  border-bottom: 1px solid #1d3a52;
+  font-size: 13px;
+}
+
+.topbar__brand {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.topbar__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.topbar__dot.is-on {
+  background: #52d273;
+}
+
+.topbar__dot.is-off {
+  background: #d27352;
+}
+
+.topbar__status,
+.topbar__scene,
+.topbar__counts {
+  color: #8fb3c9;
+}
+
+.agent-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.agent-list h2 {
+  margin: 0 0 0.75rem;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #8fb3c9;
+}
+
+.agent-list .empty {
+  color: #5c7d92;
+  font-size: 13px;
+}
+
+.agent-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.agent {
+  display: grid;
+  grid-template-columns: 1.2rem 1fr 5.5rem 5rem 4.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  background: #0f2231;
+  border: 1px solid #17354a;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.agent:hover {
+  border-color: #2a6b8f;
+}
+
+.agent.is-selected {
+  border-color: #52d273;
+}
+
+.agent--working {
+  background: #10303f;
+}
+
+.agent--leaving {
+  opacity: 0.55;
+}
+
+.agent__mark {
+  color: #52d273;
+}
+
+.agent__label {
+  font-weight: 600;
+}
+
+.agent__status,
+.agent__slot,
+.agent__time {
+  color: #8fb3c9;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+}
