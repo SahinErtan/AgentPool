@@ -105,6 +105,11 @@ starts**.
 - `container.sortableChildren = true` plus `zIndex` replaces `sortChildren()`.
 - Masks live in the **parent's coordinate space**; the mask `Graphics` must be a child of the same
   container that uses it.
+- **Never set `renderable = false` on a mask.** In PixiJS v8 a mask is drawn into the stencil buffer
+  and left out of the colour pass, so it never shows up on the screen on its own. Taking it out of the
+  render pass as well makes the whole masked layer disappear — and it does so in *some* browsers only,
+  which is the worst kind of bug. The characters vanished in Chromium under Playwright while they were
+  perfectly fine in the same build under a plain Chrome.
 
 ### Do not use `resizeTo`
 

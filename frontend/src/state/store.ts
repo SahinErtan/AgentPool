@@ -7,6 +7,12 @@
 
 import type { AgentView, SessionEventView } from '../net/types';
 
+export interface Toast {
+  id: number;
+  message: string;
+  kind: 'info' | 'warn';
+}
+
 export interface StoreState {
   connected: boolean;
   scene: string;
@@ -15,12 +21,15 @@ export interface StoreState {
   agents: Map<string, AgentView>;
   feed: SessionEventView[];
   selectedId: string | null;
+  toast: Toast | null;
   lastFrameAt: number;
 }
 
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
+
+let toastId = 0;
 
 let state: StoreState = {
   connected: false,
@@ -29,6 +38,7 @@ let state: StoreState = {
   agents: new Map(),
   feed: [],
   selectedId: null,
+  toast: null,
   lastFrameAt: 0,
 };
 
@@ -89,6 +99,18 @@ export const store = {
   pushFeed(event: SessionEventView) {
     const feed = [event, ...state.feed].slice(0, 100);
     state = { ...state, feed, lastFrameAt: Date.now() };
+    emit();
+  },
+
+  pushToast(message: string, kind: Toast['kind'] = 'info') {
+    toastId += 1;
+    state = { ...state, toast: { id: toastId, message, kind } };
+    emit();
+  },
+
+  clearToast(id: number) {
+    if (!state.toast || state.toast.id !== id) return;
+    state = { ...state, toast: null };
     emit();
   },
 

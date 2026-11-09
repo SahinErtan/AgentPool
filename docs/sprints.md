@@ -77,6 +77,13 @@ unit. Every sprint ends with something you can *see* or *measure* — never with
 ## Sprint 8 — polish and the modularity proof
 
 - `ui/Inspector.tsx`, `ui/Legend.tsx`, `ui/Toast.tsx`, responsive layout.
-- `scenes/stadium.py` — a stub scene proving the seam.
+- `scenes/stadium.py` — a second scene, proving the seam.
 - `tests/test_bridge_is_scene_agnostic.py` — the architecture guard.
+- `tests/test_stadium_scene.py` — the stadium has its own tests.
 - `README.md`, `docs/hook-events.md`, `docs/lifecycle.md`, `docs/scenes.md`.
+
+The sprint also turned up a bug that only showed in one browser: the masked
+layer — and with it every character — disappeared in Chromium under
+Playwright, because the mask object had `renderable = false`. A mask in
+PixiJS v8 is left out of the colour pass by itself; taking it out of the
+render pass as well empties the layer, in some browsers only.

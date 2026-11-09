@@ -148,8 +148,10 @@ export class PoolScene {
     );
     app.stage.addChild(this.world);
 
-    this.maskAbove.renderable = false;
-    this.maskBelow.renderable = false;
+    // The masks stay renderable. In PixiJS v8 a mask is drawn into the
+    // stencil buffer and left out of the colour pass, so it never shows up
+    // on the screen — but taking it out of the render pass as well makes
+    // the whole layer disappear in some browsers.
 
     this.ambience = new Ambience(this.layout);
     this.world.addChild(this.ambience.container);
