@@ -190,3 +190,27 @@ body {
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 12px;
 }
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.pool-canvas {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.pool-canvas canvas {
+  display: block;
+}
+
+.stage .agent-list {
+  width: 300px;
+  flex: 0 0 300px;
+  background: #08131c;
+  border-left: 1px solid #1d3a52;
+}

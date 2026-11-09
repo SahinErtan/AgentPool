@@ -47,6 +47,14 @@ export class CharacterAnimator {
   readonly rig: Rig;
   readonly spec: CharacterSpec;
   readonly props: PropSet;
+  /**
+   * The underwater twin of the rig.
+   *
+   * A swimming character has to be cut by the waterline, and a Pixi container
+   * can only have one parent, so the character owns two rigs. The pose is
+   * computed once and written to both, which keeps the halves aligned.
+   */
+  secondary: Rig | null = null;
 
   private weights: Weights = { rest: 1, lounge: 0, activity: 0, walk: 0, swim: 0, climb: 0 };
   /** The damped lounge weight before the activity is taken out of it. */
@@ -241,9 +249,20 @@ export class CharacterAnimator {
     if (snack.visible) snack.position.set(0, -this.rig.skeleton.limb * 1.3);
   }
 
+  /** Give the character its underwater twin. */
+  setSecondary(rig: Rig): void {
+    this.secondary = rig;
+    rig.facing.scale.x = this.rig.facing.scale.x;
+    this.applyPose(this.pose);
+  }
+
   /** Write a pose onto the rig. */
   applyPose(pose: Pose): void {
-    const rig = this.rig;
+    this.applyPoseTo(this.rig, pose);
+    if (this.secondary) this.applyPoseTo(this.secondary, pose);
+  }
+
+  private applyPoseTo(rig: Rig, pose: Pose): void {
     rig.root.rotation = pose.rootRot;
     rig.bob.position.y = -pose.bob;
     rig.bob.rotation = pose.bodyRoll;

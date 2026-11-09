@@ -18,6 +18,7 @@ from .bridge.broker import Broker
 from .bridge.reconcile import reconcile
 from .bridge.registry import AgentRegistry
 from .config import Settings
+from .scenes.base import replay_scene
 from .scenes.registry import build_scene
 from .store.journal import Journal
 
@@ -66,6 +67,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             recovered = reconcile(registry, settings.claude_dir)
             if recovered:
                 log.info("recovered %s agents from disk", recovered)
+                for state in registry.snapshot():
+                    await replay_scene(scene, state)
                 await hub.broadcast(
                     {
                         "type": "snapshot",

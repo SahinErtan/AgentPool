@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from ..bridge.events import SessionEvent
+from ..bridge.events import AgentStatus, SessionEvent
 from ..bridge.registry import AgentState
 
 
@@ -47,3 +47,19 @@ class SceneAdapter(Protocol):
 
     def presentation(self, agent: AgentState) -> Dict[str, Any]:
         """Per-agent scene data: the mode, the slot and its properties."""
+
+
+async def replay_scene(scene: SceneAdapter, state: AgentState) -> None:
+    """Let a scene catch up with an agent it has not seen before.
+
+    The reconciler rebuilds the registry from disk, so the scene never saw
+    the lifecycle events. Replaying the right sequence gives it the same
+    lanes and loungers it would have assigned itself.
+    """
+    await scene.on_agent_spawned(state)
+    if state.status is AgentStatus.WORKING:
+        await scene.on_agent_started(state)
+    elif state.status is AgentStatus.FINISHED:
+        await scene.on_agent_finished(state)
+    elif state.status is AgentStatus.LEAVING:
+        await scene.on_agent_removed(state.id)
