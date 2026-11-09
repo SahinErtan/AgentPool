@@ -15,6 +15,7 @@ from .api.ingest import create_ingest_router
 from .api.state import create_state_router
 from .api.ws import WsHub, create_ws_router
 from .bridge.broker import Broker
+from .bridge.reconcile import reconcile
 from .bridge.registry import AgentRegistry
 from .config import Settings
 from .scenes.registry import build_scene
@@ -61,6 +62,21 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await hub.start()
+        try:
+            recovered = reconcile(registry, settings.claude_dir)
+            if recovered:
+                log.info("recovered %s agents from disk", recovered)
+                await hub.broadcast(
+                    {
+                        "type": "snapshot",
+                        "scene": scene.scene_id,
+                        "ts": time.time(),
+                        "agents": [hub.agent_view(state) for state in registry.snapshot()],
+                        "scene_payload": scene.describe(),
+                    }
+                )
+        except Exception:
+            log.exception("reconciliation failed")
         task = asyncio.create_task(sweeper())
         try:
             yield
