@@ -13,6 +13,24 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
+def _to_seconds(value: Any) -> float:
+    """Claude Code writes its timestamps in milliseconds.
+
+    The rest of AgentPool thinks in seconds, so the two are converted here,
+    once, instead of at every place that reads a timestamp.
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if number <= 0:
+        return 0.0
+    # Anything above the year 5138 in seconds is really milliseconds.
+    if number > 1e11:
+        return number / 1000.0
+    return number
+
+
 def read_sessions(claude_dir: Path) -> List[Dict[str, Any]]:
     """Every live session from ``~/.claude/sessions/*.json``."""
     sessions: List[Dict[str, Any]] = []
@@ -38,8 +56,8 @@ def read_sessions(claude_dir: Path) -> List[Dict[str, Any]]:
                 "name": data.get("name") or "session",
                 "kind": data.get("kind") or "interactive",
                 "status": data.get("status") or "idle",
-                "started_at": data.get("startedAt"),
-                "updated_at": data.get("updatedAt"),
+                "started_at": _to_seconds(data.get("startedAt")),
+                "updated_at": _to_seconds(data.get("updatedAt")),
                 "version": data.get("version"),
             }
         )

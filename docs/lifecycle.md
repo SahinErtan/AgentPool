@@ -69,3 +69,21 @@ still alive: the live sessions from `~/.claude/sessions/*.json` and the
 subagents that have not finished yet. An agent that the reconciler finds is
 replayed into the scene, so it gets the same lane and the same lounger it
 would have had.
+
+Every thirty seconds it reads the disk again. That is the safety net for the
+hooks that never arrived — the server was down, the request timed out, the
+plugin was not installed yet.
+
+Two rules keep it harmless:
+
+- **The merge never goes backwards.** The disk is only allowed to correct an
+  agent when the file is newer than the last event the hooks delivered. A
+  session that the hooks say is working is not put back to idle because a
+  file says so.
+- **A known agent keeps its place.** The reconciler only *places* an agent the
+  scene has never seen. The ones it knows keep their lane or their lounger,
+  they just hear about a state that changed.
+
+A missed `SubagentStop` is the case this exists for: the file says the
+subagent is done, the pool says it is still swimming, and thirty seconds
+later the character climbs out.

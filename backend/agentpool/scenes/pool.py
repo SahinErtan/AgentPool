@@ -42,12 +42,16 @@ class PoolScene:
         # The agents that have neither a lounger nor a waiting spot. They
         # stand at the gate until a place frees up.
         self._overflow: List[str] = []
+        # Every agent the scene has ever placed. A reconcile uses it to know
+        # which agents are new.
+        self._known: set[str] = set()
         # The agents whose presentation changed without a lifecycle event.
         self._dirty: set[str] = set()
 
     # -- lifecycle ----------------------------------------------------
 
     async def on_agent_spawned(self, agent: AgentState) -> None:
+        self._known.add(agent.id)
         if agent.status is AgentStatus.WORKING:
             self._assign_route(agent, from_point=GATE, to_point=LADDER, route="walk")
         else:
@@ -181,6 +185,10 @@ class PoolScene:
         if self._overflow:
             return self._overflow[0]
         return None
+
+    def knows(self, agent_id: str) -> bool:
+        """Whether the scene has already placed this agent."""
+        return agent_id in self._known
 
     def take_dirty(self) -> List[str]:
         """The agents whose presentation changed without a lifecycle event."""

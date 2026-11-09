@@ -15,6 +15,7 @@ from .api.ingest import create_ingest_router
 from .api.state import create_state_router
 from .api.ws import WsHub, create_ws_router
 from .bridge.broker import Broker
+from .bridge.events import AgentStatus
 from .bridge.reconcile import reconcile
 from .bridge.registry import AgentRegistry
 from .config import Settings
@@ -23,6 +24,9 @@ from .scenes.registry import build_scene
 from .store.journal import Journal
 
 log = logging.getLogger("agentpool")
+
+# How often the disk is read to catch the events that never arrived.
+RECONCILE_INTERVAL_S = 30.0
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -60,6 +64,40 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             except Exception:
                 log.exception("sweeper failed")
 
+    async def reconciler() -> None:
+        """Read the disk every thirty seconds.
+
+        This is the safety net: a hook that never arrived — the server was
+        down, the request timed out, the plugin was not installed yet — is
+        corrected by what Claude Code has on disk. The merge never goes
+        backwards, so a hook that arrived later is not undone by a file that
+        was written earlier.
+        """
+        while True:
+            await asyncio.sleep(RECONCILE_INTERVAL_S)
+            try:
+                changed = reconcile(registry, settings.claude_dir)
+                if not changed:
+                    continue
+                for state in changed:
+                    # Only an agent the scene has never seen is placed. The
+                    # ones it knows keep their lane or their lounger, but
+                    # they have to hear about a state that changed.
+                    if not scene.knows(state.id):
+                        await replay_scene(scene, state)
+                    elif state.status is AgentStatus.WORKING:
+                        await scene.on_agent_started(state)
+                    elif state.status is AgentStatus.IDLE:
+                        await scene.on_agent_finished(state)
+                await hub.broadcast(
+                    {
+                        "type": "agent_upsert",
+                        "agents": [hub.agent_view(state) for state in changed],
+                    }
+                )
+            except Exception:
+                log.exception("reconcile failed")
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await hub.start()
@@ -80,11 +118,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 )
         except Exception:
             log.exception("reconciliation failed")
-        task = asyncio.create_task(sweeper())
+        tasks = [asyncio.create_task(sweeper()), asyncio.create_task(reconciler())]
         try:
             yield
         finally:
-            task.cancel()
+            for task in tasks:
+                task.cancel()
             await hub.stop()
 
     app = FastAPI(title="AgentPool", version="0.1.0", lifespan=lifespan)

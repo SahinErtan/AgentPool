@@ -43,6 +43,13 @@ class SceneAdapter(Protocol):
 
     async def on_session_event(self, event: SessionEvent) -> None: ...
 
+    def knows(self, agent_id: str) -> bool:
+        """Whether the scene has already placed this agent.
+
+        A reconcile uses it to tell a new agent from one it already knows, so
+        a running agent is never put back on its route.
+        """
+
     def describe(self) -> Dict[str, Any]:
         """Scene-level payload for the browser (slots, palette, counts)."""
 

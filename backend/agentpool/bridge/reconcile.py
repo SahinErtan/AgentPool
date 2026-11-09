@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from .events import AgentEvent, AgentKind, AgentStatus
-from .registry import AgentRegistry
+from .registry import AgentRegistry, AgentState
 from .sources import read_agents_cli, read_sessions, read_subagents
 
 log = logging.getLogger("agentpool.reconcile")
@@ -25,15 +25,29 @@ def reconcile(
     *,
     now: Optional[float] = None,
     use_cli: bool = True,
-) -> int:
-    """Merge the on-disk state into the registry. Returns the number of agents."""
+) -> List[AgentState]:
+    """Merge the on-disk state into the registry.
+
+    Returns the agents it changed. The merge never goes backwards: a hook
+    that arrived after the file was written knows more than the file, so the
+    file does not get to undo it.
+    """
     now = now if now is not None else time.time()
+    changed: List[AgentState] = []
+
+    def apply(event: AgentEvent, disk_ts: float) -> None:
+        """Apply an event, unless the hooks know more than the disk."""
+        state = registry.get(event.agent_id)
+        if state is not None and state.last_event_at >= disk_ts:
+            return
+        changed.extend(registry.apply(event))
 
     for session in read_sessions(claude_dir):
         session_id = session["session_id"]
         agent_id = f"session:{session_id}"
         working = session.get("status") == "busy"
-        registry.apply(
+        disk_ts = float(session.get("updated_at") or 0.0)
+        apply(
             AgentEvent.new(
                 type="spawned",
                 agent_id=agent_id,
@@ -45,10 +59,11 @@ def reconcile(
                 detail=session.get("cwd"),
                 source="reconcile",
                 ts=now,
-            )
+            ),
+            disk_ts,
         )
         if working:
-            registry.apply(
+            apply(
                 AgentEvent.new(
                     type="started",
                     agent_id=agent_id,
@@ -60,7 +75,8 @@ def reconcile(
                     detail=session.get("cwd"),
                     source="reconcile",
                     ts=now,
-                )
+                ),
+                disk_ts,
             )
 
     live_session_ids = {item["session_id"] for item in read_sessions(claude_dir)}
@@ -68,16 +84,41 @@ def reconcile(
     for subagent in read_subagents(claude_dir):
         agent_id = f"sub:{subagent['agent_id']}"
         finished = subagent.get("finished")
-        # Only the agents that are still running belong in the pool: a
-        # finished one is history, and Claude Code keeps the transcripts for
-        # thirty days.
         if finished:
+            # A finished subagent is history, and Claude Code keeps the
+            # transcripts for thirty days. It only matters when the stop
+            # hook never arrived: then the agent is still swimming in the
+            # pool and the file says it is done.
+            known = registry.get(agent_id)
+            if known is None or known.status is AgentStatus.FINISHED:
+                continue
+            apply(
+                AgentEvent.new(
+                    type="finished",
+                    agent_id=agent_id,
+                    kind=AgentKind.SUBAGENT,
+                    session_id=subagent.get("session_id") or "",
+                    parent_id=(
+                        f"session:{subagent['session_id']}"
+                        if subagent.get("session_id")
+                        else None
+                    ),
+                    status=AgentStatus.FINISHED,
+                    label=subagent.get("agent_type") or "subagent",
+                    detail=subagent.get("description"),
+                    tool_use_id=subagent.get("tool_use_id"),
+                    subagent_type=subagent.get("agent_type"),
+                    source="reconcile",
+                    ts=now,
+                ),
+                float(subagent.get("modified") or 0.0),
+            )
             continue
         belongs_to_live_session = subagent.get("session_id") in live_session_ids
         touched_recently = (now_wall - float(subagent.get("modified") or 0)) < 7200
         if not (belongs_to_live_session or touched_recently):
             continue
-        registry.apply(
+        apply(
             AgentEvent.new(
                 type="spawned",
                 agent_id=agent_id,
@@ -95,7 +136,8 @@ def reconcile(
                 subagent_type=subagent.get("agent_type"),
                 source="reconcile",
                 ts=now,
-            )
+            ),
+            float(subagent.get("modified") or 0.0),
         )
 
     if use_cli:
@@ -113,7 +155,7 @@ def reconcile(
                 "failed": AgentStatus.FINISHED,
                 "stopped": AgentStatus.FINISHED,
             }.get(state, AgentStatus.WORKING)
-            registry.apply(
+            apply(
                 AgentEvent.new(
                     type="spawned",
                     agent_id=f"wf:{task_id}",
@@ -125,7 +167,8 @@ def reconcile(
                     detail=item.get("cwd"),
                     source="reconcile",
                     ts=now,
-                )
+                ),
+                now,
             )
 
-    return len(registry)
+    return changed
