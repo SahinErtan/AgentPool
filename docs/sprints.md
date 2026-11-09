@@ -93,3 +93,25 @@ layer — and with it every character — disappeared in Chromium under
 Playwright, because the mask object had `renderable = false`. A mask in
 PixiJS v8 is left out of the colour pass by itself; taking it out of the
 render pass as well empties the layer, in some browsers only.
+
+## What came after the sprints
+
+The plan left a few things for the end. They are done now.
+
+- **The frontend tests.** The character system had no tests at all. It has 22
+  now: a character is a pure function of its id, the animation does not depend
+  on the frame rate, the pose layers never fight each other, the pose is never
+  a `NaN`, the two rigs stay in sync and the idle activities do not run in
+  lockstep. The layout has its own: it is pure, and the loungers never
+  overlap. They run in plain Node — esbuild bundles them and `node:test` runs
+  them, so there is no new dependency.
+- **The reconcile loop.** The disk is read every thirty seconds, so a hook
+  that never arrived is corrected. The merge never goes backwards: the disk
+  may only correct an agent when the file is newer than the last event.
+- **The transcripts.** The parent transcript knows the description of a
+  subagent and whether it has come back yet — the metadata file does not.
+- **The polish.** The inspector shows the event ring, the legend explains the
+  swim styles and the accessories, and the screen can ask for less motion.
+
+The stadium moved to its own repository. `docs/porting.md` says exactly what
+the next project lifts from here.
