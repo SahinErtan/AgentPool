@@ -10,11 +10,12 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from .events import AgentEvent, AgentKind, AgentStatus
 from .registry import AgentRegistry, AgentState
 from .sources import read_agents_cli, read_sessions, read_subagents
+from .transcript import read_agent_calls
 
 log = logging.getLogger("agentpool.reconcile")
 
@@ -81,6 +82,18 @@ def reconcile(
 
     live_session_ids = {item["session_id"] for item in read_sessions(claude_dir)}
     now_wall = time.time()
+
+    # The parent transcript knows the description of every subagent, even
+    # when the metadata file does not. It is read once per session.
+    calls_by_session: dict[str, dict[str, Any]] = {}
+
+    def calls_for(session_id: str) -> dict[str, Any]:
+        if session_id not in calls_by_session:
+            calls_by_session[session_id] = {
+                call["tool_use_id"]: call
+                for call in read_agent_calls(claude_dir, session_id)
+            }
+        return calls_by_session[session_id]
     for subagent in read_subagents(claude_dir):
         agent_id = f"sub:{subagent['agent_id']}"
         finished = subagent.get("finished")
@@ -118,6 +131,10 @@ def reconcile(
         touched_recently = (now_wall - float(subagent.get("modified") or 0)) < 7200
         if not (belongs_to_live_session or touched_recently):
             continue
+        session_id = subagent.get("session_id") or ""
+        call = calls_for(session_id).get(subagent.get("tool_use_id") or "")
+        description = subagent.get("description") or (call or {}).get("description")
+        agent_type = subagent.get("agent_type") or (call or {}).get("subagent_type")
         apply(
             AgentEvent.new(
                 type="spawned",
@@ -130,10 +147,10 @@ def reconcile(
                     else None
                 ),
                 status=AgentStatus.FINISHED if finished else AgentStatus.WORKING,
-                label=subagent.get("agent_type") or "subagent",
-                detail=subagent.get("description"),
+                label=agent_type or "subagent",
+                detail=description,
                 tool_use_id=subagent.get("tool_use_id"),
-                subagent_type=subagent.get("agent_type"),
+                subagent_type=agent_type,
                 source="reconcile",
                 ts=now,
             ),
