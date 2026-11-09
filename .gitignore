@@ -15,3 +15,6 @@ dist/
 
 # Playwright MCP output
 .playwright-mcp/
+
+# The frontend test bundle
+frontend/test/.build/

@@ -38,9 +38,14 @@ starts. The plugin starts the backend if it is not listening yet.
 ```sh
 make server      # the backend on :38000, with the built frontend
 make frontend    # the vite dev server on :5173, with hot reload
-make test        # the backend test suite
+make test        # the backend and the frontend test suites
 make lab         # the animation lab: every swim style and every idle activity
 ```
+
+The frontend tests run in plain Node: the character system has its own
+invariants — a character is a pure function of its id, the animation does not
+depend on the frame rate, the pose layers never fight each other and the pose
+is never a `NaN` — and they are checked on every `make test`.
 
 The lab is at <http://127.0.0.1:5173/?lab>. It shows the four swim styles
 (crawl, breaststroke, butterfly, doggy) and the idle activities (tea, book,

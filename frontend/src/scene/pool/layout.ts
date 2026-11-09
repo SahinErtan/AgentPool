@@ -105,7 +105,13 @@ export function computeLayout(
   // The loungers run along the deck, from just after the gate to the ladder.
   const loungerStart = waterLeft + Math.round(characterHeight * 0.25);
   const loungerEnd = waterRight - ladderWidth - Math.round(characterHeight * 0.4);
-  const loungerWidth = Math.round(characterHeight * 0.62);
+  // The lounger is as wide as a character needs it, but never so wide that
+  // two of them overlap on a small canvas.
+  const loungerSpace = Math.max(0, loungerEnd - loungerStart);
+  const loungerWidth = Math.max(
+    8,
+    Math.min(Math.round(characterHeight * 0.62), Math.floor((loungerSpace / loungers_) * 0.75)),
+  );
   const loungerGap = Math.max(
     6,
     (loungerEnd - loungerStart - loungerWidth) / Math.max(1, loungers_ - 1),

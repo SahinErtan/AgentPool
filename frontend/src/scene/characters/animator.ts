@@ -7,6 +7,7 @@
  * weight fall to zero.
  */
 
+import { damp } from './math';
 import { buildProps, type PropSet, type Rig } from './rig';
 import type { CharacterSpec } from './spec';
 import {
@@ -30,10 +31,6 @@ export type CharState =
   | 'swimming'
   | 'climbing';
 
-export function damp(current: number, target: number, k: number, dtMs: number): number {
-  return current + (target - current) * (1 - Math.exp((-k * dtMs) / 1000));
-}
-
 interface Weights {
   rest: number;
   lounge: number;
@@ -42,6 +39,8 @@ interface Weights {
   swim: number;
   climb: number;
 }
+
+export { damp };
 
 export class CharacterAnimator {
   readonly rig: Rig;

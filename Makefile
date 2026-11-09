@@ -3,7 +3,7 @@ PYENV_VERSION := 3.11.11
 VENV        := $(HOME)/.pyenv/versions/3.11.11/envs/agentpool-env
 PORT        := 38000
 
-.PHONY: help venv install dev server frontend build test lab clean plugin plugin-install plugin-uninstall
+.PHONY: help venv install dev server frontend build test test-backend test-frontend lab clean plugin plugin-uninstall
 
 help:
 	@echo "make venv      - create the python 3.11 environment"
@@ -11,7 +11,7 @@ help:
 	@echo "make server    - run the backend on :$(PORT)"
 	@echo "make frontend  - run the vite dev server on :5173"
 	@echo "make build     - build the frontend into frontend/dist"
-	@echo "make test      - run the backend test suite"
+	@echo "make test      - run the backend and the frontend test suites"
 	@echo "make lab       - open the animation lab (frontend/?lab)"
 	@echo "make plugin     - install the Claude Code plugin from ./plugin"
 
@@ -32,8 +32,13 @@ frontend:
 build:
 	cd frontend && npm run build
 
-test:
+test: test-backend test-frontend
+
+test-backend:
 	$(VENV)/bin/python -m pytest tests -q
+
+test-frontend:
+	cd frontend && npm test
 
 lab:
 	@echo "open http://127.0.0.1:5173/?lab"
