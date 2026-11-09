@@ -1,0 +1,16 @@
+{
+  "name": "agentpool",
+  "version": "0.1.0",
+  "description": "Your Claude Code agents swim in a pool instead of typing at a desk",
+  "author": {
+    "name": "AgentPool"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "plugin",
+    "hooks",
+    "dashboard",
+    "agents"
+  ]
+}

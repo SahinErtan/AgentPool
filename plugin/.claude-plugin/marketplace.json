@@ -1,0 +1,17 @@
+{
+  "name": "agentpool-local",
+  "owner": {
+    "name": "AgentPool"
+  },
+  "metadata": {
+    "description": "The local AgentPool marketplace"
+  },
+  "plugins": [
+    {
+      "name": "agentpool",
+      "version": "0.1.0",
+      "source": "./agentpool",
+      "description": "Your Claude Code agents swim in a pool instead of typing at a desk"
+    }
+  ]
+}
