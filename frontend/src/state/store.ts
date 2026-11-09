@@ -10,6 +10,8 @@ import type { AgentView, SessionEventView } from '../net/types';
 export interface StoreState {
   connected: boolean;
   scene: string;
+  /** The scene's own description: how many lanes, how many loungers. */
+  scenePayload: Record<string, unknown> | null;
   agents: Map<string, AgentView>;
   feed: SessionEventView[];
   selectedId: string | null;
@@ -23,6 +25,7 @@ const listeners = new Set<Listener>();
 let state: StoreState = {
   connected: false,
   scene: 'pool',
+  scenePayload: null,
   agents: new Map(),
   feed: [],
   selectedId: null,
@@ -52,6 +55,11 @@ export const store = {
   setScene(scene: string) {
     if (state.scene === scene) return;
     state = { ...state, scene };
+    emit();
+  },
+
+  setScenePayload(payload: Record<string, unknown> | null) {
+    state = { ...state, scenePayload: payload };
     emit();
   },
 

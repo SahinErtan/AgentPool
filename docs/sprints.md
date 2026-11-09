@@ -55,9 +55,16 @@ unit. Every sprint ends with something you can *see* or *measure* — never with
 
 ## Sprint 6 — idle activities + ambience
 
-- `characters/activities.ts`, `props.ts`, `steam.ts`, `emotes.ts`, `bubbles.ts`.
-- `scene/pool/ambience.ts`: birds, drifting petals, the swaying parasol, the
-  sun glint, ambient ripples.
+- `characters/effects.ts`: the steam over a teacup, the "Z" glyphs over a
+  napper and the speech bubble of a conversation. (The props themselves live
+  in `characters/draw.ts` and are attached to the rig in `characters/rig.ts`,
+  so there is no separate `props.ts`.)
+- `scene/pool/ambience.ts`: the bird that crosses the sky, the drifting
+  petals, the ambient ripples and the sun glint.
+- The deck holds six loungers and four waiting spots, both numbers owned by
+  the backend and read from the scene description. When every lounger is
+  taken the agents wait at the pool edge, and when that is full too they
+  wait at the gate instead of walking through each other.
 
 ## Sprint 7 — plugin packaging
 

@@ -32,6 +32,8 @@ export interface PoolLayout {
   lanes: Rect[];
   /** The lounger slots along the deck. */
   loungers: Rect[];
+  /** The spots at the pool edge for the agents that have no lounger. */
+  waiting: Rect[];
   /** The entrance and exit, at the left end of the deck. */
   gate: Rect;
   /** The ladder at the right end of the pool. */
@@ -43,9 +45,23 @@ export interface PoolLayout {
 }
 
 export const LANE_COUNT = 4;
-export const LOUNGER_COUNT = 8;
+export const LOUNGER_COUNT = 6;
+/** How many agents can wait at the pool edge when every lounger is taken. */
+export const WAITING_COUNT = 4;
 
-export function computeLayout(width: number, height: number): PoolLayout {
+/**
+ * @param loungerCount How many loungers the deck has. The backend owns that
+ *   number, so the frontend asks the scene description for it and only falls
+ *   back to the default when the scene has not spoken yet.
+ */
+export function computeLayout(
+  width: number,
+  height: number,
+  loungerCount = LOUNGER_COUNT,
+  waitingCount = WAITING_COUNT,
+): PoolLayout {
+  const loungers_ = Math.max(1, Math.round(loungerCount));
+  const waiting_ = Math.max(0, Math.round(waitingCount));
   const w = Math.max(320, width);
   const h = Math.max(240, height);
 
@@ -92,15 +108,29 @@ export function computeLayout(width: number, height: number): PoolLayout {
   const loungerWidth = Math.round(characterHeight * 0.62);
   const loungerGap = Math.max(
     6,
-    (loungerEnd - loungerStart - loungerWidth) / Math.max(1, LOUNGER_COUNT - 1),
+    (loungerEnd - loungerStart - loungerWidth) / Math.max(1, loungers_ - 1),
   );
   const loungers: Rect[] = [];
-  for (let index = 0; index < LOUNGER_COUNT; index += 1) {
+  for (let index = 0; index < loungers_; index += 1) {
     loungers.push({
       x: Math.round(loungerStart + index * loungerGap),
       y: deckY - Math.round(characterHeight * 0.26),
       w: loungerWidth,
       h: Math.round(characterHeight * 0.26),
+    });
+  }
+
+  // The waiting spots are at the pool edge: when every lounger is taken the
+  // agent stands there until one frees up.
+  const waiting: Rect[] = [];
+  const waitStart = water.x + Math.round(characterHeight * 0.3);
+  const waitGap = Math.round(characterHeight * 0.62);
+  for (let index = 0; index < waiting_; index += 1) {
+    waiting.push({
+      x: Math.round(waitStart + index * waitGap),
+      y: surfaceY - Math.round(characterHeight * 0.04),
+      w: Math.round(characterHeight * 0.34),
+      h: Math.round(characterHeight * 0.04),
     });
   }
 
@@ -127,6 +157,7 @@ export function computeLayout(width: number, height: number): PoolLayout {
     surfaceY,
     lanes,
     loungers,
+    waiting,
     gate,
     ladder,
     characterHeight,
@@ -155,6 +186,12 @@ export function resolveWaypoint(
       x: slot.x + slot.w / 2 - layout.characterHeight * 0.42,
       y: layout.deckY,
     };
+  }
+  if (waypoint.startsWith('waiting:')) {
+    const index = Number(waypoint.slice('waiting:'.length));
+    const slot = layout.waiting[index];
+    if (!slot) return null;
+    return { x: slot.x + slot.w / 2, y: slot.y };
   }
   if (waypoint.startsWith('lane:')) {
     const index = Number(waypoint.slice('lane:'.length));

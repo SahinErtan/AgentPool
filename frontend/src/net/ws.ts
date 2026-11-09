@@ -52,6 +52,7 @@ export function connectAgentSocket(): AgentSocket {
     switch (frame.type) {
       case 'snapshot':
         store.setScene(frame.scene);
+        store.setScenePayload((frame.scene_payload as Record<string, unknown>) ?? null);
         store.replaceAgents(frame.agents ?? []);
         break;
       case 'agent_upsert':

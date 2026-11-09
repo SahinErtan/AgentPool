@@ -253,5 +253,14 @@ class AgentRegistry:
         return changed
 
     def acknowledge_exit(self, agent_id: str) -> bool:
-        """Drop an agent that has walked out of the scene."""
+        """Drop an agent that has walked out of the scene.
+
+        Only an agent that is on its way out may be dropped: a character
+        that waits at the gate is still part of the scene.
+        """
+        state = self._agents.get(agent_id)
+        if state is None:
+            return False
+        if state.status is not AgentStatus.LEAVING:
+            return False
         return self._agents.pop(agent_id, None) is not None

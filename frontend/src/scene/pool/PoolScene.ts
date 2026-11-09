@@ -17,7 +17,16 @@ import { buildRig, type Rig } from '../characters/rig';
 import { specFor, type CharacterSpec, type Role } from '../characters/spec';
 import type { AgentView } from '../../net/types';
 import { acknowledgeExit } from '../../net/ws';
-import { computeLayout, resolveWaypoint, type PoolLayout } from './layout';
+import { store } from '../../state/store';
+import {
+  computeLayout,
+  LOUNGER_COUNT,
+  resolveWaypoint,
+  WAITING_COUNT,
+  type PoolLayout,
+} from './layout';
+import { Ambience } from './ambience';
+import { SleepZ, SpeechBubble, Steam } from '../characters/effects';
 import {
   drawDeck,
   drawFloor,
@@ -30,7 +39,14 @@ import {
 const WALK_SPEED = 165; // pixels per second
 const CLIMB_DURATION = 1.2; // seconds
 
-type Desired = 'swim' | 'lounge' | 'exiting' | 'leaving' | 'offscreen' | 'unknown';
+type Desired =
+  | 'swim'
+  | 'lounge'
+  | 'waiting'
+  | 'exiting'
+  | 'leaving'
+  | 'offscreen'
+  | 'unknown';
 
 interface Character {
   id: string;
@@ -44,6 +60,7 @@ interface Character {
   desired: Desired;
   /** The lounger it belongs to, when it has one. */
   loungerSlot: number | null;
+  waitingSlot: number | null;
   /** Where it goes when it climbs out of the water. */
   exitTarget: string;
   /** Where it is heading. */
@@ -66,6 +83,13 @@ interface Character {
   climbTime: number;
   /** The last mode the backend reported, for the debug readout. */
   lastMode: string;
+  lastLimit: number;
+  /** The direction the character is walking: 1, -1 or 0 when it stands. */
+  moveDir: number;
+  /** Timer between two emissions of the character's idle effect. */
+  effectTimer: number;
+  /** A fixed random seed for the character's idle chatter. */
+  effectSeed: number;
 }
 
 export class PoolScene {
@@ -86,14 +110,30 @@ export class PoolScene {
   private causticA: TilingSprite | null = null;
   private causticB: TilingSprite | null = null;
   private debugText: Text | null = null;
+  private ambience: Ambience;
+  private steam = new Steam();
+  private sleepZ = new SleepZ();
+  private bubble = new SpeechBubble();
 
   private layout: PoolLayout;
   private characters = new Map<string, Character>();
   private time = 0;
+  private lastDt = 0;
+  /** How many loungers the layout was built with. */
+  private loungerCount = LOUNGER_COUNT;
+  /** How many waiting spots the layout was built with. */
+  private waitingCount = WAITING_COUNT;
 
   constructor(app: Application) {
     this.app = app;
-    this.layout = computeLayout(app.renderer.width, app.renderer.height);
+    this.loungerCount = this.requestedLoungers();
+    this.waitingCount = this.requestedWaiting();
+    this.layout = computeLayout(
+      app.renderer.width,
+      app.renderer.height,
+      this.loungerCount,
+      this.waitingCount,
+    );
 
     this.world.addChild(
       this.skyLayer,
@@ -111,14 +151,62 @@ export class PoolScene {
     this.maskAbove.renderable = false;
     this.maskBelow.renderable = false;
 
+    this.ambience = new Ambience(this.layout);
+    this.world.addChild(this.ambience.container);
+    this.world.addChild(this.steam.container, this.sleepZ.container, this.bubble.container);
+
     this.buildLayers();
-    this.app.ticker.add((ticker) => this.update(ticker.deltaMS));
+    this.app.ticker.add((ticker) => {
+      try {
+        this.update(ticker.deltaMS);
+      } catch (error) {
+        // A broken frame must not take the whole scene down, and the debug
+        // readout is where the reason shows up.
+        if (this.debugText) {
+          this.debugText.text = `ERROR: ${(error as Error)?.message ?? String(error)}`;
+        }
+        console.error('AgentPool: the frame failed', error);
+      }
+    });
+  }
+
+  /**
+   * The number of loungers the scene description asks for.
+   *
+   * The backend owns the world model, so the deck is built to fit the
+   * scene it is showing rather than the other way round.
+   */
+  private requestedLoungers(): number {
+    const payload = store.get().scenePayload;
+    const count = Number(payload?.loungers ?? LOUNGER_COUNT);
+    return Number.isFinite(count) && count > 0 ? Math.round(count) : LOUNGER_COUNT;
+  }
+
+  /** How many agents can wait at the pool edge, according to the scene. */
+  private requestedWaiting(): number {
+    const payload = store.get().scenePayload;
+    const count = Number(payload?.waiting ?? WAITING_COUNT);
+    return Number.isFinite(count) && count >= 0 ? Math.round(count) : WAITING_COUNT;
   }
 
   // -- construction -------------------------------------------------
 
   private buildLayers(): void {
     const layout = this.layout;
+
+    // Building the layers is idempotent: a resize empties them first, so
+    // the scene never ends up with two skies and two decks.
+    for (const layer of [
+      this.skyLayer,
+      this.deckLayer,
+      this.floorLayer,
+      this.causticsLayer,
+      this.waterLayer,
+    ]) {
+      for (const child of layer.removeChildren()) child.destroy();
+    }
+    this.causticA = null;
+    this.causticB = null;
 
     const sky = new Graphics();
     drawSky(sky, layout);
@@ -225,7 +313,9 @@ export class PoolScene {
     const animator = new CharacterAnimator(rig);
 
     const label = new Text({
-      text: agent.label,
+      // The full name lives in the agent list and the inspector; on the
+      // scene only a short tag is readable without covering the pool.
+      text: agent.label.length > 14 ? `${agent.label.slice(0, 13)}…` : agent.label,
       style: {
         fontFamily: 'system-ui, sans-serif',
         fontSize: Math.max(9, Math.round(this.layout.characterHeight * 0.11)),
@@ -246,6 +336,9 @@ export class PoolScene {
       state: 'resting',
       desired: 'unknown',
       loungerSlot: null,
+      waitingSlot: null,
+      lastLimit: Number.POSITIVE_INFINITY,
+      moveDir: 0,
       exitTarget: 'lounger:0',
       target: null,
       x: this.layout.gate.x,
@@ -259,6 +352,8 @@ export class PoolScene {
       climbingInto: 'water',
       climbTime: 0,
       lastMode: '',
+      effectTimer: 0,
+      effectSeed: (spec.seed % 1000) / 1000,
     };
   }
 
@@ -273,6 +368,8 @@ export class PoolScene {
         ? 'swim'
         : mode === 'lounge'
           ? 'lounge'
+          : mode === 'waiting'
+            ? 'waiting'
           : mode === 'exiting'
             ? 'exiting'
             : mode === 'leaving'
@@ -302,7 +399,35 @@ export class PoolScene {
 
     if (character.desired === 'lounge') {
       const lounger = Number(props.lounger ?? -1);
-      if (this.layout.loungers[lounger]) character.loungerSlot = lounger;
+      if (!this.layout.loungers[lounger]) {
+        // The pool is full: the agent waits at the gate.
+        character.desired = 'waiting';
+        character.waitingSlot = null;
+        character.loungerSlot = null;
+        character.state = 'walking';
+        character.target = 'gate';
+        return;
+      }
+      if (character.loungerSlot !== lounger) {
+        // Either the character walked in from the gate, or a lounger became
+        // free and it was promoted from the waiting area.
+        character.loungerSlot = lounger;
+        character.waitingSlot = null;
+        character.state = 'walking';
+        character.target = `lounger:${lounger}`;
+      }
+      return;
+    }
+
+    if (character.desired === 'waiting') {
+      const slot = Number(props.waiting ?? -1);
+      if (slot < 0 || !this.layout.waiting[slot]) return;
+      if (character.waitingSlot !== slot) {
+        character.waitingSlot = slot;
+        character.loungerSlot = null;
+        character.state = 'walking';
+        character.target = `waiting:${slot}`;
+      }
       return;
     }
 
@@ -350,7 +475,8 @@ export class PoolScene {
       case 'lounge': {
         const target =
           character.loungerSlot === null ? null : `lounger:${character.loungerSlot}`;
-        character.y = this.layout.deckY;
+        // While it walks, its height is settled by the waypoint it walks to.
+        if (character.state !== 'walking') character.y = this.layout.deckY;
         if (!character.entered) {
           // Walking in through the gate towards its lounger.
           character.state = 'walking';
@@ -362,6 +488,19 @@ export class PoolScene {
           character.target = target;
         } else {
           character.state = 'lounging';
+        }
+        break;
+      }
+
+      case 'waiting': {
+        // The agent has no lounger: it waits at the pool edge until one
+        // frees up. When even the edge is full it waits at the gate.
+        const slot = character.waitingSlot;
+        character.target = slot === null ? 'gate' : `waiting:${slot}`;
+        if (character.state !== 'walking') {
+          const spot = slot === null ? null : this.layout.waiting[slot];
+          character.state = 'resting';
+          character.y = spot ? spot.y : this.layout.deckY;
         }
         break;
       }
@@ -411,7 +550,17 @@ export class PoolScene {
 
   private update(dtMs: number): void {
     const dt = dtMs / 1000;
+    this.lastDt = dtMs;
     this.time += dt;
+
+    // The scene description arrives after the first frame, so the deck is
+    // rebuilt once the backend has told us how many loungers it wants.
+    if (
+      this.requestedLoungers() !== this.loungerCount ||
+      this.requestedWaiting() !== this.waitingCount
+    ) {
+      this.resize(this.app.renderer.width, this.app.renderer.height);
+    }
 
     for (const character of this.characters.values()) {
       this.updateState(character, dt);
@@ -429,8 +578,45 @@ export class PoolScene {
       } else {
         character.label.position.set(character.x + span * 0.45, character.y - span * 0.3);
       }
-      character.label.visible = character.state !== 'swimming';
+      // The label would pile up on a row of loungers, so it is only shown
+      // for the selected agent and for the ones that are on the move.
+      character.label.visible =
+        character.id === store.get().selectedId ||
+        (character.state !== 'swimming' &&
+          character.state !== 'lounging' &&
+          character.state !== 'resting');
     }
+
+    // The little effects that make the loungers look inhabited.
+    for (const character of this.characters.values()) {
+      if (!character.animator.isDoingActivity) continue;
+      const activity = character.spec.idleActivity;
+      character.effectTimer += dt;
+
+      if (activity === 'tea' && character.effectTimer > 0.28) {
+        character.effectTimer = 0;
+        const cup = character.rig.propLayer.getGlobalPosition();
+        this.steam.emit(cup.x, cup.y - this.layout.characterHeight * 0.06);
+      } else if (activity === 'nap' && character.effectTimer > 1.3) {
+        character.effectTimer = 0;
+        const head = character.rig.headPivot.getGlobalPosition();
+        this.sleepZ.emit(head.x, head.y - this.layout.characterHeight * 0.2);
+      } else if (activity === 'chat' && character.effectTimer > 2.2) {
+        character.effectTimer = 0;
+        const head = character.rig.headPivot.getGlobalPosition();
+        const lines = ['…', 'really?', 'ship it', 'one more test', 'ok, done'];
+        const message = lines[Math.floor(character.effectSeed * lines.length) % lines.length];
+        this.bubble.show(
+          head.x,
+          head.y - this.layout.characterHeight * 0.45,
+          message,
+        );
+      }
+    }
+    this.steam.update(dt);
+    this.sleepZ.update(dt);
+    this.bubble.update(dt);
+    this.ambience.update(dt);
 
     // The caustics drift.
     if (this.causticA && this.causticB) {
@@ -450,14 +636,16 @@ export class PoolScene {
     drawFoam(this.foam, this.layout, this.time);
 
     if (this.debugText) {
-      this.debugText.text = [...this.characters.values()]
+      this.debugText.text = [
+        `canvas ${this.layout.width}x${this.layout.height} loungers=${this.layout.loungers.length} waiting=${this.layout.waiting.length} deckY=${this.layout.deckY} surfaceY=${this.layout.surfaceY} dt=${this.lastDt} time=${this.time.toFixed(2)}`,
+        ...[...this.characters.values()]
         .map(
           (c) =>
             `${c.id.slice(0, 12)} m=${c.lastMode} st=${c.state} x=${Math.round(c.x)} y=${Math.round(
               c.y,
-            )} e=${c.entered} t=${c.target ?? '-'}`,
-        )
-        .join('\n');
+            )} e=${c.entered} t=${c.target ?? '-'} lim=${c.lastLimit}`,
+        ),
+      ].join('\n');
     }
   }
 
@@ -488,6 +676,7 @@ export class PoolScene {
 
     const target = character.target ? resolveWaypoint(this.layout, character.target) : null;
     if (!target) return;
+    character.lastLimit = -4;
 
     // Spread the characters along the ladder so they do not stack up.
     const offset =
@@ -495,15 +684,39 @@ export class PoolScene {
         ? (character.laneIndex - 1.5) * this.layout.characterHeight * 0.11
         : 0;
 
+    // The character also walks towards the height of its waypoint, so a
+    // character that is promoted from the pool edge climbs onto the deck
+    // instead of teleporting there.
+    character.y += (target.y - character.y) * Math.min(1, dt * 8);
+
     const dx = target.x + offset - character.x;
     const distance = Math.abs(dx);
-    const step = WALK_SPEED * dt;
+    let step = WALK_SPEED * dt;
+    character.moveDir = Math.sign(dx);
+
+    // The characters that walk on the deck keep their distance from each
+    // other, so they queue up at the gate instead of walking through one
+    // another.
+    let limit = Number.POSITIVE_INFINITY;
+    if (character.state === 'walking') {
+      const gap = this.layout.characterHeight * 0.42;
+      limit = this.clearanceAhead(character, Math.sign(dx), gap);
+      if (limit < step) step = Math.max(0, limit);
+    }
+    character.lastLimit = limit;
 
     if (distance <= step) {
       // Arrive at the *offset* target, otherwise the character oscillates
       // around it and never registers as arrived.
       character.x = target.x + offset;
       if (character.target === 'gate') {
+        if (character.desired === 'waiting') {
+          // The pool is full: the character waits at the gate instead of
+          // walking out of the scene.
+          character.state = 'resting';
+          character.entered = true;
+          return;
+        }
         // The character has walked out through the gate.
         acknowledgeExit(character.id);
         return;
@@ -521,14 +734,14 @@ export class PoolScene {
         // Climbed out onto the deck.
         character.state = 'lounging';
         character.entered = true;
-        character.y = this.layout.deckY;
+        character.y = target.y;
         return;
       }
       if (character.state === 'walking') {
-        // Arrived at the lounger.
-        character.state = 'lounging';
+        // Arrived at the lounger or at the waiting spot.
+        character.state = character.desired === 'waiting' ? 'resting' : 'lounging';
         character.entered = true;
-        character.y = this.layout.deckY;
+        character.y = target.y;
       }
       return;
     }
@@ -541,10 +754,51 @@ export class PoolScene {
     }
   }
 
+  /**
+   * How far a character may still walk before it bumps into the one ahead.
+   *
+   * Returns the distance to the closest character on the same stretch of
+   * deck, minus the gap that has to be kept between them. When two
+   * characters stand exactly on top of each other — which happens at the
+   * gate, where they all arrive from the same point — the one with the
+   * lower id yields, so the pair never deadlocks.
+   */
+  private clearanceAhead(character: Character, direction: number, gap: number): number {
+    if (direction === 0) return Number.POSITIVE_INFINITY;
+    let nearest = Number.POSITIVE_INFINITY;
+
+    for (const other of this.characters.values()) {
+      if (other === character) continue;
+      if (other.state !== 'walking' && other.state !== 'climbing') continue;
+      // A character that has nowhere to go stands still, so it must not
+      // block the queue behind it.
+      if (other.target === null) continue;
+      // Two characters walking towards each other pass by, they do not
+      // queue up behind one another.
+      if (other.moveDir !== 0 && other.moveDir !== direction) continue;
+      if (Math.abs(other.y - character.y) > this.layout.characterHeight) continue;
+
+      const ahead = (other.x - character.x) * direction;
+      if (ahead > 0.5) {
+        // It is in front: I may walk until the gap between us is restored.
+        nearest = Math.min(nearest, Math.max(0, ahead - gap));
+      } else if (Math.abs(ahead) <= 2 && other.id > character.id) {
+        // Exactly on top of each other: the higher id yields, so the pair
+        // never deadlocks.
+        nearest = 0;
+      }
+    }
+
+    return nearest;
+  }
+
   // -- layout -------------------------------------------------------
 
   resize(width: number, height: number): void {
-    this.layout = computeLayout(width, height);
+    this.loungerCount = this.requestedLoungers();
+    this.waitingCount = this.requestedWaiting();
+    this.layout = computeLayout(width, height, this.loungerCount, this.waitingCount);
+    this.ambience.resize(this.layout);
     this.buildLayers();
     this.updateMasks();
     for (const character of this.characters.values()) {

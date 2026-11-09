@@ -9,6 +9,7 @@ export type SceneMode =
   | 'lounge'
   | 'exiting'
   | 'leaving'
+  | 'waiting'
   | 'offscreen'
   | 'entering'
   | 'walking';

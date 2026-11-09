@@ -16,7 +16,10 @@ from ..bridge.events import AgentStatus, SessionEvent
 from ..bridge.registry import AgentState
 
 LANES = 4
-LOUNGERS = 8
+LOUNGERS = 6
+# When every lounger is taken, the agent waits at the pool edge instead of
+# standing on somebody's feet.
+WAITING = 4
 
 # The semantic waypoints the frontend resolves into pixels.
 GATE = "gate"
@@ -34,7 +37,10 @@ class PoolScene:
         self._lounger_of: Dict[str, int] = {}
         self._lounger_occupant: Dict[int, str] = {}
         self._route_of: Dict[str, Dict[str, Any]] = {}
-        self._gate_busy = False
+        self._waiting_of: Dict[str, int] = {}
+        self._waiting_occupant: Dict[int, str] = {}
+        # The agents whose presentation changed without a lifecycle event.
+        self._dirty: set[str] = set()
 
     # -- lifecycle ----------------------------------------------------
 
@@ -43,10 +49,16 @@ class PoolScene:
             self._assign_route(agent, from_point=GATE, to_point=LADDER, route="walk")
         else:
             lounger = self._take_lounger(agent.id)
-            self._assign_route(agent, from_point=GATE, to_point=f"lounger:{lounger}", route="walk")
+            if lounger is None:
+                self._send_to_waiting(agent)
+            else:
+                self._assign_route(
+                    agent, from_point=GATE, to_point=f"lounger:{lounger}", route="walk"
+                )
 
     async def on_agent_started(self, agent: AgentState) -> None:
         self._release_lounger(agent.id)
+        self._release_waiting(agent.id)
         lane = self._take_lane(agent.id)
         self._assign_route(agent, from_point=LADDER, to_point=LADDER, route="descend")
         self._lane_of[agent.id] = lane
@@ -54,11 +66,17 @@ class PoolScene:
     async def on_agent_finished(self, agent: AgentState) -> None:
         self._release_lane(agent.id)
         lounger = self._take_lounger(agent.id)
-        self._assign_route(agent, from_point=LADDER, to_point=f"lounger:{lounger}", route="ascend")
+        if lounger is None:
+            self._send_to_waiting(agent)
+        else:
+            self._assign_route(
+                agent, from_point=LADDER, to_point=f"lounger:{lounger}", route="ascend"
+            )
 
     async def on_agent_removed(self, agent_id: str) -> None:
         self._release_lane(agent_id)
         self._release_lounger(agent_id)
+        self._release_waiting(agent_id)
         self._route_of.pop(agent_id, None)
 
     async def on_session_event(self, event: SessionEvent) -> None:
@@ -100,6 +118,57 @@ class PoolScene:
         lounger = self._lounger_of.pop(agent_id, None)
         if lounger is not None and self._lounger_occupant.get(lounger) == agent_id:
             del self._lounger_occupant[lounger]
+            self._promote_waiting()
+
+    def _send_to_waiting(self, agent: AgentState) -> None:
+        """There is no free lounger, so the agent waits at the pool edge."""
+        slot = self._take_waiting(agent.id)
+        if slot is None:
+            # Even the pool edge is full: the agent stays at the gate.
+            self._assign_route(agent, from_point=GATE, to_point=GATE, route="wait")
+            return
+        self._assign_route(
+            agent, from_point=GATE, to_point=f"waiting:{slot}", route="walk"
+        )
+
+    def _take_waiting(self, agent_id: str) -> Optional[int]:
+        current = self._waiting_of.get(agent_id)
+        if current is not None and self._waiting_occupant.get(current) == agent_id:
+            return current
+        for slot in range(WAITING):
+            if slot not in self._waiting_occupant:
+                self._waiting_occupant[slot] = agent_id
+                self._waiting_of[agent_id] = slot
+                return slot
+        return None
+
+    def _release_waiting(self, agent_id: str) -> None:
+        slot = self._waiting_of.pop(agent_id, None)
+        if slot is not None and self._waiting_occupant.get(slot) == agent_id:
+            del self._waiting_occupant[slot]
+
+    def _promote_waiting(self) -> None:
+        """A lounger became free: the agent that waited the longest takes it."""
+        if not self._waiting_occupant:
+            return
+        slot = min(self._waiting_occupant)
+        agent_id = self._waiting_occupant[slot]
+        lounger = self._take_lounger(agent_id)
+        if lounger is None:
+            return
+        self._release_waiting(agent_id)
+        self._route_of[agent_id] = {
+            "from": GATE,
+            "to": f"lounger:{lounger}",
+            "route": "walk",
+        }
+        self._dirty.add(agent_id)
+
+    def take_dirty(self) -> List[str]:
+        """The agents whose presentation changed without a lifecycle event."""
+        dirty = sorted(self._dirty)
+        self._dirty.clear()
+        return dirty
 
     def _assign_route(
         self,
@@ -118,6 +187,7 @@ class PoolScene:
             "scene": self.scene_id,
             "lanes": LANES,
             "loungers": LOUNGERS,
+            "waiting": WAITING,
             "gate": GATE,
             "ladder": LADDER,
         }
@@ -125,6 +195,7 @@ class PoolScene:
     def presentation(self, agent: AgentState) -> Dict[str, Any]:
         lane = self._lane_of.get(agent.id)
         lounger = self._lounger_of.get(agent.id)
+        waiting = self._waiting_of.get(agent.id)
         route = self._route_of.get(agent.id, {})
 
         status = agent.status
@@ -136,6 +207,10 @@ class PoolScene:
             mode = "leaving"
         elif status is AgentStatus.REMOVED:
             mode = "offscreen"
+        elif lounger is None:
+            # No lounger: the agent waits, either at the pool edge or, when
+            # that is full too, at the gate.
+            mode = "waiting"
         else:
             mode = "lounge"
 
@@ -145,6 +220,7 @@ class PoolScene:
             "direction": 1 if (lane or 0) % 2 == 0 else -1,
             "speed_scale": 1.0,
             "lounger": lounger,
+            "waiting": waiting,
             "route": route.get("route"),
             "from": route.get("from"),
             "to": route.get("to"),
@@ -155,5 +231,7 @@ class PoolScene:
             slot = f"lane:{lane}"
         elif mode == "lounge" and lounger is not None:
             slot = f"lounger:{lounger}"
+        elif mode == "waiting" and waiting is not None:
+            slot = f"waiting:{waiting}"
 
         return {"mode": mode, "slot": slot, "props": props}

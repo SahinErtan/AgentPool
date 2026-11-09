@@ -68,6 +68,17 @@ async def _dispatch(registry, broker, scene, item: AgentEvent, changed) -> None:
         for state in changed:
             await scene.on_agent_removed(state.id)
 
+    # The scene may move an agent on its own, for instance when a lounger
+    # becomes free and somebody who was waiting takes it.
+    seen = {state.id for state in changed}
+    for agent_id in scene.take_dirty():
+        if agent_id in seen:
+            continue
+        state = registry.get(agent_id)
+        if state is not None:
+            changed = list(changed) + [state]
+            seen.add(agent_id)
+
     upserts: List[Dict] = []
     for state in changed:
         payload = state.to_dict()
