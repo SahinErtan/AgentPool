@@ -39,7 +39,6 @@ export function PoolCanvas() {
         }
         initialized = true;
         host.appendChild(app.canvas);
-        observer = observeHostSize(app, host);
 
         scene = new PoolScene(app);
         scene.syncAgents([...store.get().agents.values()]);
@@ -53,16 +52,15 @@ export function PoolCanvas() {
           scene?.syncAgents([...store.get().agents.values()]);
         });
 
-        const onResize = () => {
+        // The scene follows the renderer: the pool has to be drawn in the
+        // size the canvas actually has, or a click lands on the wrong
+        // character.
+        observer = observeHostSize(app, host, () => {
           scene?.resize(app.renderer.width, app.renderer.height);
-        };
-        observer = observeHostSize(app, host);
-        window.addEventListener('resize', onResize);
-        onResize();
+        });
 
         (app as unknown as { __unsubscribe?: () => void }).__unsubscribe = () => {
           unsubscribe();
-          window.removeEventListener('resize', onResize);
         };
       })
       .catch((error: unknown) => {

@@ -50,6 +50,7 @@ class Settings:
     session_ttl_s: float = 900.0
     exit_grace_s: float = 15.0
     journal_enabled: bool = True
+    journal_keep_days: int = 7
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -71,4 +72,7 @@ class Settings:
             session_ttl_s=_env_float("AGENTPOOL_SESSION_TTL_S", defaults.session_ttl_s),
             exit_grace_s=_env_float("AGENTPOOL_EXIT_GRACE_S", defaults.exit_grace_s),
             journal_enabled=_env_bool("AGENTPOOL_JOURNAL", defaults.journal_enabled),
+            journal_keep_days=_env_int(
+                "AGENTPOOL_JOURNAL_KEEP_DAYS", defaults.journal_keep_days
+            ),
         )

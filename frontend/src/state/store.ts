@@ -21,6 +21,8 @@ export interface StoreState {
   agents: Map<string, AgentView>;
   feed: SessionEventView[];
   selectedId: string | null;
+  /** The agent the pointer is over in the scene. */
+  hoveredId: string | null;
   toast: Toast | null;
   lastFrameAt: number;
 }
@@ -38,6 +40,7 @@ let state: StoreState = {
   agents: new Map(),
   feed: [],
   selectedId: null,
+  hoveredId: null,
   toast: null,
   lastFrameAt: 0,
 };
@@ -117,6 +120,13 @@ export const store = {
   select(agentId: string | null) {
     if (state.selectedId === agentId) return;
     state = { ...state, selectedId: agentId };
+    emit();
+  },
+
+  /** Remember which agent the pointer is over, so the list can follow it. */
+  setHovered(agentId: string | null) {
+    if (state.hoveredId === agentId) return;
+    state = { ...state, hoveredId: agentId };
     emit();
   },
 };

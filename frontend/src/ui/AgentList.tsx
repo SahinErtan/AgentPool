@@ -18,7 +18,7 @@ function elapsed(from: number | null): string {
 }
 
 export function AgentList() {
-  const { agents, selectedId } = useStore();
+  const { agents, selectedId, hoveredId } = useStore();
   const list = [...agents.values()].sort((a, b) => a.id.localeCompare(b.id));
 
   return (
@@ -29,7 +29,14 @@ export function AgentList() {
         {list.map((agent) => (
           <li
             key={agent.id}
-            className={`agent agent--${agent.status} ${agent.id === selectedId ? 'is-selected' : ''}`}
+            className={[
+              'agent',
+              `agent--${agent.status}`,
+              agent.id === selectedId ? 'is-selected' : '',
+              agent.id === hoveredId ? 'is-hovered' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             onClick={() => store.select(agent.id === selectedId ? null : agent.id)}
           >
             <span className="agent__mark">{KIND_MARK[agent.kind] ?? '·'}</span>

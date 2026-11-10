@@ -39,7 +39,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     broker = Broker()
     scene = build_scene(settings.scene)
-    journal = Journal(settings.state_dir / "events", enabled=settings.journal_enabled)
+    journal = Journal(
+        settings.state_dir / "events",
+        enabled=settings.journal_enabled,
+        keep_days=settings.journal_keep_days,
+    )
     hub = WsHub(broker, registry, scene)
     started_at = time.time()
 
@@ -76,6 +80,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         while True:
             await asyncio.sleep(RECONCILE_INTERVAL_S)
             try:
+                # The journal is kept for a while and then thrown away, so
+                # it cannot grow into something nobody wants to keep.
+                journal.prune()
                 changed = reconcile(registry, settings.claude_dir)
                 if not changed:
                     continue
@@ -101,6 +108,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await hub.start()
+        try:
+            journal.prune()
+        except Exception:
+            log.exception("the journal could not be pruned")
         try:
             recovered = reconcile(registry, settings.claude_dir)
             if recovered:

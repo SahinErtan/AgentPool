@@ -11,7 +11,7 @@
  * because the backend went quiet.
  */
 
-import { Application, Container, Graphics, Text, TilingSprite } from 'pixi.js';
+import { Application, Container, Graphics, Point, Text, TilingSprite } from 'pixi.js';
 import { CharacterAnimator, type CharState } from '../characters/animator';
 import { buildRig, type Rig } from '../characters/rig';
 import { specFor, type CharacterSpec, type Role } from '../characters/spec';
@@ -28,6 +28,7 @@ import {
 import { Ambience } from './ambience';
 import { prefersReducedMotion } from '../motion';
 import { SleepZ, SpeechBubble, Steam } from '../characters/effects';
+import { characterBox, hitTest, type HitBox, type Pose } from './hittest';
 import {
   drawDeck,
   drawFloor,
@@ -39,6 +40,13 @@ import {
 
 const WALK_SPEED = 165; // pixels per second
 const CLIMB_DURATION = 1.2; // seconds
+
+/** The pose of a character decides the shape of its hit area. */
+function poseFor(state: CharState): Pose {
+  if (state === 'swimming') return 'swim';
+  if (state === 'lounging') return 'lie';
+  return 'stand';
+}
 
 type Desired =
   | 'swim'
@@ -110,6 +118,8 @@ export class PoolScene {
   private maskAbove = new Graphics();
   private maskBelow = new Graphics();
   private foam = new Graphics();
+  /** A ring under the character the pointer is over. */
+  private hoverRing = new Graphics();
   private causticA: TilingSprite | null = null;
   private causticB: TilingSprite | null = null;
   private debugText: Text | null = null;
@@ -122,6 +132,12 @@ export class PoolScene {
   private characters = new Map<string, Character>();
   private time = 0;
   private lastDt = 0;
+  /** The agent the pointer is over, if any. */
+  private hoveredId: string | null = null;
+  /** A reusable point, so the pointer handling does not allocate. */
+  private readonly pointerPoint = new Point();
+  /** Where the pointer lands in the scene's own space. */
+  private readonly localPoint = new Point();
   /** How many loungers the layout was built with. */
   private loungerCount = LOUNGER_COUNT;
   /** How many waiting spots the layout was built with. */
@@ -159,8 +175,10 @@ export class PoolScene {
     this.ambience = new Ambience(this.layout);
     this.world.addChild(this.ambience.container);
     this.world.addChild(this.steam.container, this.sleepZ.container, this.bubble.container);
+    this.fxLayer.addChild(this.hoverRing);
 
     this.buildLayers();
+    this.bindPointer();
     this.app.ticker.add((ticker) => {
       try {
         this.update(ticker.deltaMS);
@@ -596,12 +614,28 @@ export class PoolScene {
         character.label.position.set(character.x + span * 0.45, character.y - span * 0.3);
       }
       // The label would pile up on a row of loungers, so it is only shown
-      // for the selected agent and for the ones that are on the move.
+      // for the selected agent, for the one under the pointer, and for the
+      // ones that are on the move.
       character.label.visible =
         character.id === store.get().selectedId ||
+        character.id === this.hoveredId ||
         (character.state !== 'swimming' &&
           character.state !== 'lounging' &&
           character.state !== 'resting');
+    }
+
+    // A ring under the character the pointer is over, so the click target
+    // is visible before it is clicked.
+    this.hoverRing.clear();
+    const marked = this.hoveredId ?? store.get().selectedId;
+    if (marked) {
+      const character = this.characters.get(marked);
+      if (character) {
+        const span = character.spec.height * this.layout.characterHeight;
+        this.hoverRing
+          .ellipse(character.x, character.y, span * 0.42, span * 0.11)
+          .stroke({ color: 0x52d273, width: 2, alpha: 0.9 });
+      }
     }
 
     // The little effects that make the loungers look inhabited.
@@ -817,9 +851,88 @@ export class PoolScene {
     return nearest;
   }
 
+  // -- the pointer --------------------------------------------------
+
+  /**
+   * Let the person click a character.
+   *
+   * The characters are drawn on a canvas, so there is nothing to click on:
+   * the click is matched against the geometry the characters already have.
+   * The listeners sit on the canvas element rather than in Pixi's own event
+   * system, because the layers that sit on top of the water would have to
+   * share the hit testing with the characters.
+   */
+  private bindPointer(): void {
+    const canvas = this.app.canvas;
+    canvas.addEventListener('pointermove', this.onPointerMove);
+    canvas.addEventListener('pointerdown', this.onPointerDown);
+    canvas.addEventListener('pointerleave', this.onPointerLeave);
+  }
+
+  private unbindPointer(): void {
+    const canvas = this.app.canvas;
+    canvas.removeEventListener('pointermove', this.onPointerMove);
+    canvas.removeEventListener('pointerdown', this.onPointerDown);
+    canvas.removeEventListener('pointerleave', this.onPointerLeave);
+  }
+
+  private onPointerMove = (event: PointerEvent): void => {
+    const point = this.scenePoint(event);
+    if (!point) return;
+    const hit = this.pickAt(point.x, point.y);
+    if (hit === this.hoveredId) return;
+    this.hoveredId = hit;
+    store.setHovered(hit);
+    this.app.canvas.style.cursor = hit ? 'pointer' : 'auto';
+  };
+
+  private onPointerLeave = (): void => {
+    if (this.hoveredId === null) return;
+    this.hoveredId = null;
+    store.setHovered(null);
+    this.app.canvas.style.cursor = 'auto';
+  };
+
+  private onPointerDown = (event: PointerEvent): void => {
+    const point = this.scenePoint(event);
+    if (!point) return;
+    // Clicking a character opens its inspector; clicking the water closes
+    // the one that is open.
+    store.select(this.pickAt(point.x, point.y));
+  };
+
+  /**
+   * Where the pointer is, in the coordinates of the scene.
+   *
+   * The canvas may be laid out at any size, so the position is scaled by
+   * the ratio between the canvas and the scene.
+   */
+  private scenePoint(event: PointerEvent): Point | null {
+    const rect = this.app.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const x = ((event.clientX - rect.left) / rect.width) * this.layout.width;
+    const y = ((event.clientY - rect.top) / rect.height) * this.layout.height;
+    // The world may be moved or scaled one day — the camera — so the
+    // position is taken into the scene's own space.
+    return this.world.toLocal(this.pointerPoint.set(x, y), undefined, this.localPoint);
+  }
+
+  /** The agent under the given point, if there is one. */
+  private pickAt(x: number, y: number): string | null {
+    const boxes: HitBox[] = [];
+    for (const character of this.characters.values()) {
+      const height = character.spec.height * this.layout.characterHeight;
+      boxes.push(
+        characterBox(character.id, character.x, character.y, height, poseFor(character.state)),
+      );
+    }
+    return hitTest(boxes, x, y);
+  }
+
   // -- layout -------------------------------------------------------
 
   resize(width: number, height: number): void {
+    if (width === this.layout.width && height === this.layout.height) return;
     this.loungerCount = this.requestedLoungers();
     this.waitingCount = this.requestedWaiting();
     this.layout = computeLayout(width, height, this.loungerCount, this.waitingCount);
@@ -833,6 +946,7 @@ export class PoolScene {
   }
 
   destroy(): void {
+    this.unbindPointer();
     for (const character of this.characters.values()) {
       character.rig.destroy();
       character.under?.destroy();

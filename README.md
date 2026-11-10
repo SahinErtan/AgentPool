@@ -18,17 +18,22 @@ time, and every character is different.
 - Every Claude Code session and every subagent, as a character.
 - The state of each one: idle, working, done, on its way out.
 - The details of an agent when you click it: the folder it works in, the
-  prompt it got, how long it has been running.
+  prompt it got, how long it has been running. A character in the pool can
+  be clicked as well as a row in the list.
 
 ## Install
 
 ```sh
-make install     # the python environment and the frontend dependencies
+make install     # the python environment, the frontend dependencies and the build
 make plugin      # register the Claude Code plugin
 ```
 
+`make install` ends with the frontend build, so a fresh clone has a
+`frontend/dist` and the backend can serve the dashboard.
+
 `make plugin` installs the plugin from the local marketplace in `plugin/`, so
-it always matches the code in this working copy.
+it always matches the code in this working copy. It is a separate step on
+purpose: it writes to the global Claude configuration.
 
 The dashboard comes up on <http://127.0.0.1:38000> as soon as a session
 starts. The plugin starts the backend if it is not listening yet.

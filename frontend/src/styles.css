@@ -167,6 +167,12 @@ body {
   border-color: #52d273;
 }
 
+/* The row of the character the pointer is over in the scene. */
+.agent.is-hovered {
+  border-color: #7fc7e8;
+  background: #143246;
+}
+
 .agent--working {
   background: #10303f;
 }

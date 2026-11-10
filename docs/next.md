@@ -26,44 +26,41 @@ conversation about it is not.
 | 12 | The camera, a pool that grows | Polish; nice, not needed | medium |
 | 13 | Licence, GitHub, CI, release | Only worth it when there is something to share | medium |
 
-Items 1–3 are one sprint of small fixes. Items 4–8 are the dashboard.
+Items 1–3 are done — they were Sprint 9. Items 4–8 are the dashboard.
 Items 9–12 are the pool. Item 13 is packaging.
 
 ---
 
-## Sprint 9 — the small fixes
+## Sprint 9 — the small fixes (done)
 
-### 1. Clicking a character in the scene
+### 1. Clicking a character in the scene — done
 
-The plan says "clicking a character opens an inspector". Today only the agent
-in the list can be clicked. The scene has no pointer handling at all:
-`PoolScene` never listens for a click, and the characters have no hit areas.
+The plan says "clicking a character opens an inspector". It can now be done
+from the scene as well as from the list.
 
-*The fix:* a pointerdown on the canvas, a hit test against the characters,
-and `store.select()` for the one that was hit. Hovering should highlight the
-matching row in the list and show its name. This also gives the scene a
-reason to know where its characters are on screen, which the camera in item
-12 will need anyway.
+`frontend/src/scene/pool/hittest.ts` turns the geometry the scene already
+has into a hit area: a swimmer is caught at the waterline, a character that
+lies down along its body, one that stands as a column. Clicking a character
+selects it; clicking the water closes the inspector. Hovering draws a ring
+under the character, shows its name and lights up its row in the list.
 
-### 2. The journal grows for ever
+### 2. The journal grows for ever — done
 
-Every event is appended to `~/.local/state/agentpool/events/events-<day>.jsonl`
-and nothing ever removes a day. A busy day is a couple of hundred kilobytes;
-a year of that is a directory nobody will ever look at.
+`Journal.prune()` deletes the files that are older than the retention —
+a week by default, `AGENTPOOL_JOURNAL_KEEP_DAYS` to change it. The sweeper
+runs at startup and in the reconcile loop. The files that are not named
+after a day are left alone.
 
-*The fix:* a sweeper that deletes the journal files older than a week, run
-from the same place the reconciler runs. Keep it small: a `prune(days)` method
-on `Journal` and one call in the loop.
+### 3. `make install` does not build the frontend — done
 
-### 3. `make install` does not build the frontend
+`make install` ends with the build, so a fresh clone has a `frontend/dist`
+and the backend can serve the dashboard. The plugin is still a separate
+step: it writes to the global Claude config.
 
-It installs the dependencies; the build happens in `make plugin`. A fresh
-clone therefore has no `frontend/dist`, and the backend warns that it is
-serving the API only.
-
-*The fix:* `install` depends on `build`. It stays separate from `plugin` —
-the plugin install is still a deliberate step, because it writes to the
-global Claude config.
+While fixing the click, a second bug turned up: the scene's layout could be
+older than the canvas — the renderer was resized by the observer but the
+layout was not, so the pool was drawn in the wrong size and a click landed
+on the wrong character. The scene now follows the renderer.
 
 ## Sprint 10 — the dashboard
 
@@ -134,7 +131,7 @@ The click first, because the plan promised it and it is the thing a person
 tries first. The journal second, because it is the only part of the project
 that gets worse the longer it runs, and the fix is twenty lines. The rest of
 the small fixes third, because they are each smaller than the effort of
-deciding whether to do them.
+deciding whether to do them. All three are done.
 
 The dashboard before the pool, because a dashboard that is useful with twenty
 agents in it is worth more than a tenth idle activity. The reactions before
@@ -144,3 +141,11 @@ story.
 
 The packaging last, because a licence on a repository nobody can open yet is
 a chore.
+
+## What comes next
+
+The dashboard: the summary, the filter and the timeline. The summary and
+the filter are small and they belong together — one line that says what is
+happening, and a way to narrow the list down to the part you care about.
+The timeline is the bigger one: it reads the journal back and draws when
+each agent was working.

@@ -7,7 +7,7 @@ PORT        := 38000
 
 help:
 	@echo "make venv      - create the python 3.11 environment"
-	@echo "make install   - venv + frontend dependencies"
+	@echo "make install   - venv + frontend dependencies + the frontend build"
 	@echo "make server    - run the backend on :$(PORT)"
 	@echo "make frontend  - run the vite dev server on :5173"
 	@echo "make build     - build the frontend into frontend/dist"
@@ -20,8 +20,12 @@ venv:
 	$(VENV)/bin/pip install --upgrade pip
 	$(VENV)/bin/pip install -r backend/requirements.txt pytest
 
+# The build belongs here: a fresh clone has to end up with a frontend/dist,
+# otherwise the backend serves the API only. The plugin is not installed
+# here — that writes to the global Claude config and stays a deliberate step.
 install: venv
 	cd frontend && npm install --ignore-scripts
+	$(MAKE) build
 
 server:
 	$(VENV)/bin/python backend/run.py
