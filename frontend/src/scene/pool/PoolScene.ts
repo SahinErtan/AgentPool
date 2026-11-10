@@ -29,6 +29,7 @@ import { Ambience } from './ambience';
 import { prefersReducedMotion } from '../motion';
 import { SleepZ, SpeechBubble, Steam } from '../characters/effects';
 import { characterBox, hitTest, type HitBox, type Pose } from './hittest';
+import { hourOfDay, mixColour, paletteFor, type Palette } from './daylight';
 import {
   drawDeck,
   drawFloor,
@@ -97,6 +98,8 @@ interface Character {
   lastLimit: number;
   /** The direction the character is walking: 1, -1 or 0 when it stands. */
   moveDir: number;
+  /** True once it has walked out through the gate and said so. */
+  exited: boolean;
   /** Timer between two emissions of the character's idle effect. */
   effectTimer: number;
   /** A fixed random seed for the character's idle chatter. */
@@ -130,6 +133,12 @@ export class PoolScene {
 
   private layout: PoolLayout;
   private characters = new Map<string, Character>();
+  /** The status the backend reported last time, to notice the changes. */
+  private lastStatus = new Map<string, string>();
+  /** The colours of the pool at this moment of the day. */
+  private palette: Palette;
+  /** The hour the palette was last built for, in quarters of an hour. */
+  private paletteStep = -1;
   private time = 0;
   private lastDt = 0;
   /** The agent the pointer is over, if any. */
@@ -145,6 +154,11 @@ export class PoolScene {
 
   constructor(app: Application) {
     this.app = app;
+    this.palette = paletteFor(hourOfDay(new Date()));
+    this.paletteStep = this.paletteStepFor(new Date());
+    // The sky reaches past the pool, so the background behind it follows
+    // the time of day as well.
+    this.app.renderer.background.color = this.palette.skyTop;
     this.loungerCount = this.requestedLoungers();
     this.waitingCount = this.requestedWaiting();
     this.layout = computeLayout(
@@ -212,6 +226,16 @@ export class PoolScene {
     return Number.isFinite(count) && count >= 0 ? Math.round(count) : WAITING_COUNT;
   }
 
+  /**
+   * The quarter of an hour the clock is in.
+   *
+   * The palette is rebuilt when this changes, so the colours move with
+   * the day without the scene being redrawn every frame.
+   */
+  private paletteStepFor(date: Date): number {
+    return Math.floor(hourOfDay(date) * 4);
+  }
+
   // -- construction -------------------------------------------------
 
   private buildLayers(): void {
@@ -232,15 +256,15 @@ export class PoolScene {
     this.causticB = null;
 
     const sky = new Graphics();
-    drawSky(sky, layout);
+    drawSky(sky, layout, this.palette);
     this.skyLayer.addChild(sky);
 
     const deck = new Graphics();
-    drawDeck(deck, layout);
+    drawDeck(deck, layout, this.palette);
     this.deckLayer.addChild(deck);
 
     const floor = new Graphics();
-    drawFloor(floor, layout);
+    drawFloor(floor, layout, this.palette);
     this.floorLayer.addChild(floor);
 
     // Two scrolling caustic layers make the water feel alive.
@@ -248,8 +272,8 @@ export class PoolScene {
     this.causticA = new TilingSprite({ texture, width: 1, height: 1 });
     this.causticB = new TilingSprite({ texture, width: 1, height: 1 });
     for (const [sprite, scale, alpha] of [
-      [this.causticA, 1.6, 0.16],
-      [this.causticB, 2.4, 0.1],
+      [this.causticA, 1.6, 0.16 * this.palette.light],
+      [this.causticB, 2.4, 0.1 * this.palette.light],
     ] as [TilingSprite, number, number][]) {
       sprite.scale.set(scale);
       sprite.alpha = alpha;
@@ -258,7 +282,7 @@ export class PoolScene {
     }
 
     const water = new Graphics();
-    drawWater(water, layout);
+    drawWater(water, layout, this.palette);
     this.waterLayer.addChild(water);
 
     this.fxLayer.addChild(this.foam);
@@ -307,6 +331,7 @@ export class PoolScene {
         this.characters.set(agent.id, character);
       }
       this.applyPresentation(character, agent);
+      this.noticeStatus(agent);
     }
 
     for (const [id, character] of [...this.characters.entries()]) {
@@ -315,6 +340,42 @@ export class PoolScene {
       character.under?.destroy();
       character.label.destroy();
       this.characters.delete(id);
+      this.lastStatus.delete(id);
+    }
+  }
+
+  /**
+   * Notice that an agent has finished, and let the others react.
+   *
+   * This is the moment that makes the pool feel like a place where
+   * something is happening: one character gets out of the water and the
+   * others look up and wave.
+   */
+  private noticeStatus(agent: AgentView): void {
+    const previous = this.lastStatus.get(agent.id);
+    this.lastStatus.set(agent.id, agent.status);
+    if (previous === undefined || previous === agent.status) return;
+    if (agent.status !== 'finished') return;
+    this.celebrate(agent.id);
+  }
+
+  /** Let the pool react to a character that has finished. */
+  private celebrate(agentId: string): void {
+    let waved = 0;
+    for (const character of this.characters.values()) {
+      if (character.id === agentId) continue;
+      const state = character.animator.currentState;
+      if (state === 'swimming') {
+        // In the water it only lifts its head.
+        character.animator.react('look');
+      } else if (waved < 3) {
+        // The ones on the deck wave. Three is enough; a full pool would
+        // look like a stadium. A character that lies down waves with the
+        // other arm, because its body is turned a quarter turn.
+        const lying = state === 'lounging' || state === 'activity';
+        character.animator.react(lying ? 'waveLying' : 'wave');
+        waved += 1;
+      }
     }
   }
 
@@ -331,6 +392,7 @@ export class PoolScene {
     const spec = specFor(agent.id, role);
     const rig = buildRig(spec);
     rig.root.scale.set(this.layout.scale * spec.height);
+    rig.root.tint = mixColour(0xffffff, 0x6f7f9c, 1 - this.palette.light);
     this.surfaceLayer.addChild(rig.root);
 
     const animator = new CharacterAnimator(rig);
@@ -363,6 +425,7 @@ export class PoolScene {
       gateQueue: 0,
       lastLimit: Number.POSITIVE_INFINITY,
       moveDir: 0,
+      exited: false,
       exitTarget: 'lounger:0',
       target: null,
       x: this.layout.gate.x,
@@ -478,6 +541,18 @@ export class PoolScene {
     this.underLayer.addChild(under.root);
     character.under = under;
     character.animator.setSecondary(under);
+  }
+
+  /**
+   * Put the character in the light of the day.
+   *
+   * In the evening the characters are in the same blue as the pool, so the
+   * scene reads as one picture instead of bright people on a dark deck.
+   */
+  private applyLight(character: Character): void {
+    const tint = mixColour(0xffffff, 0x6f7f9c, 1 - this.palette.light);
+    character.rig.root.tint = tint;
+    if (character.under) character.under.root.tint = tint;
   }
 
   // -- the state machine --------------------------------------------
@@ -597,6 +672,21 @@ export class PoolScene {
       this.resize(this.app.renderer.width, this.app.renderer.height);
     }
 
+    // The light of the day: the colours follow the clock.
+    const now = new Date();
+    const step = this.paletteStepFor(now);
+    if (step !== this.paletteStep) {
+      this.paletteStep = step;
+      this.palette = paletteFor(hourOfDay(now));
+      // The sky reaches past the pool, so the background behind it has to
+      // follow the time of day as well.
+      this.app.renderer.background.color = this.palette.skyTop;
+      this.buildLayers();
+      this.updateMasks();
+      // The characters are in the same light as the pool.
+      for (const character of this.characters.values()) this.applyLight(character);
+    }
+
     for (const character of this.characters.values()) {
       this.updateState(character, dt);
       this.moveCharacter(character, dt);
@@ -672,7 +762,7 @@ export class PoolScene {
     // characters keep moving: that is what the pool is for.
     const reduced = prefersReducedMotion();
     if (!reduced) {
-      this.ambience.update(dt);
+      this.ambience.update(dt, this.palette.light);
     }
 
     // The caustics drift.
@@ -776,8 +866,13 @@ export class PoolScene {
           character.entered = true;
           return;
         }
-        // The character has walked out through the gate.
-        acknowledgeExit(character.id);
+        // The character has walked out through the gate. It says so once:
+        // the character stays at the gate until the backend has taken it
+        // away, and every frame it is still there.
+        if (!character.exited) {
+          character.exited = true;
+          acknowledgeExit(character.id);
+        }
         return;
       }
       if (character.headingForWater && character.target === 'ladder') {

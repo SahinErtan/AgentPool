@@ -7,6 +7,7 @@
 
 import { Graphics, Texture } from 'pixi.js';
 import type { PoolLayout } from './layout';
+import { mixColour, type Palette } from './daylight';
 
 export const COLORS = {
   skyTop: '#8fd3f4',
@@ -28,28 +29,51 @@ export const COLORS = {
   foam: '#ffffff',
 };
 
-export function drawSky(g: Graphics, layout: PoolLayout): void {
-  g.rect(0, 0, layout.width, layout.deckY).fill(COLORS.skyTop);
+export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void {
+  // The sky is a gradient. It is drawn in strips, because a strip of a
+  // mixed colour is cheaper than a gradient object and looks the same.
+  const strips = 24;
+  for (let i = 0; i < strips; i += 1) {
+    const t = i / (strips - 1);
+    g.rect(
+      0,
+      (layout.deckY * i) / strips,
+      layout.width,
+      layout.deckY / strips + 1,
+    ).fill(mixColour(palette.skyTop, palette.skyBottom, t));
+  }
   g.rect(0, layout.deckY * 0.55, layout.width, layout.deckY * 0.45).fill({
     color: 0xffffff,
-    alpha: 0.18,
+    alpha: 0.18 * palette.light,
   });
+
+  // The stars come out with the dark.
+  if (palette.stars) {
+    for (let i = 0; i < 60; i += 1) {
+      // A fixed pattern: the same star every evening.
+      const x = ((i * 7919) % layout.width);
+      const y = ((i * 104729) % Math.max(1, layout.deckY * 0.7));
+      const size = 1 + ((i * 31) % 2);
+      g.circle(x, y, size).fill({ color: 0xffffff, alpha: 0.35 + ((i * 17) % 40) / 100 });
+    }
+  }
+
   // A distant treeline, so the sky has a horizon.
   const treeBase = layout.deckY;
   for (let x = -20; x < layout.width + 20; x += 46) {
     const height = 26 + ((x * 7919) % 23);
-    g.circle(x, treeBase - height * 0.35, height * 0.75).fill({ color: 0x6fae86, alpha: 0.55 });
+    g.circle(x, treeBase - height * 0.35, height * 0.75).fill({ color: palette.tree, alpha: 0.55 });
     g.rect(x - 2, treeBase - height * 0.3, 4, height * 0.3).fill({
-      color: 0x7a6248,
+      color: palette.trunk,
       alpha: 0.4,
     });
   }
 }
 
-export function drawDeck(g: Graphics, layout: PoolLayout): void {
+export function drawDeck(g: Graphics, layout: PoolLayout, palette: Palette): void {
   // The walkway the characters cross.
-  g.rect(0, layout.deck.y, layout.width, layout.deck.h).fill(COLORS.deck);
-  g.rect(0, layout.deck.y + layout.deck.h - 6, layout.width, 6).fill(COLORS.deckShade);
+  g.rect(0, layout.deck.y, layout.width, layout.deck.h).fill(palette.deck);
+  g.rect(0, layout.deck.y + layout.deck.h - 6, layout.width, 6).fill(palette.deckShade);
   // Tiles.
   for (let x = 0; x < layout.width; x += 42) {
     g.rect(x, layout.deck.y, 2, layout.deck.h).fill({ color: 0x000000, alpha: 0.05 });
@@ -59,9 +83,9 @@ export function drawDeck(g: Graphics, layout: PoolLayout): void {
   // boundary between the terrace and the water reads clearly.
   const coping = Math.round(layout.characterHeight * 0.16);
   const copingY = layout.surfaceY - coping * 0.5;
-  g.rect(layout.water.x - coping, copingY, layout.water.w + coping * 2, coping).fill(COLORS.coping);
+  g.rect(layout.water.x - coping, copingY, layout.water.w + coping * 2, coping).fill(palette.coping);
   g.rect(layout.water.x - coping, copingY + coping, layout.water.w + coping * 2, 5).fill({
-    color: 0x1c5c8f,
+    color: palette.waterDeep,
     alpha: 0.45,
   });
 
@@ -91,11 +115,26 @@ export function drawDeck(g: Graphics, layout: PoolLayout): void {
     0x9c7a52,
   );
   g.ellipse(parasolX + 22, layout.deckY - layout.characterHeight * 0.9, 34, 12).fill(COLORS.parasol);
+
+  // The lamps around the pool, and the light they put on the deck.
+  if (palette.lamps) {
+    for (const slot of layout.loungers) {
+      const lampX = slot.x + slot.w / 2;
+      const lampY = layout.deck.y - 12;
+      g.rect(lampX - 1, lampY, 2, 12).fill(0x6b5a44);
+      g.circle(lampX, lampY, 3).fill(0xffe6a8);
+      // Three rings, so the light fades out instead of ending in a circle.
+      g.circle(lampX, lampY, 9).fill({ color: 0xffd98a, alpha: 0.12 });
+      g.circle(lampX, lampY, 20).fill({ color: 0xffd98a, alpha: 0.06 });
+      // The pool of light on the deck under the lamp.
+      g.ellipse(lampX, layout.deck.y + 20, 30, 12).fill({ color: 0xffd98a, alpha: 0.08 });
+    }
+  }
 }
 
-export function drawFloor(g: Graphics, layout: PoolLayout): void {
+export function drawFloor(g: Graphics, layout: PoolLayout, palette: Palette): void {
   const water = layout.water;
-  g.rect(water.x, water.y, water.w, water.h).fill(COLORS.floor);
+  g.rect(water.x, water.y, water.w, water.h).fill(palette.floor);
   // Lane lines on the floor.
   for (const lane of layout.lanes) {
     g.rect(water.x, lane.y + lane.h - 3, water.w, 3).fill({ color: 0x6fb2cf, alpha: 0.55 });
@@ -158,12 +197,12 @@ export function makeCausticTexture(size = 128): Texture {
   return texture;
 }
 
-export function drawWater(g: Graphics, layout: PoolLayout): void {
+export function drawWater(g: Graphics, layout: PoolLayout, palette: Palette): void {
   const water = layout.water;
-  g.rect(water.x, water.y, water.w, water.h).fill({ color: 0x2f86c9, alpha: 0.55 });
+  g.rect(water.x, water.y, water.w, water.h).fill({ color: palette.water, alpha: 0.55 });
   // A darker band towards the bottom reads as depth.
   g.rect(water.x, water.y + water.h * 0.6, water.w, water.h * 0.4).fill({
-    color: 0x14508c,
+    color: palette.waterDeep,
     alpha: 0.22,
   });
 }

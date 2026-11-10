@@ -12,15 +12,19 @@ import { buildProps, type PropSet, type Rig } from './rig';
 import type { CharacterSpec } from './spec';
 import {
   activityPose,
+  addPose,
   blendPose,
   climbPose,
   copyPose,
   loungePose,
+  reactionDelta,
+  REACTION_DURATION_S,
   restPose,
   SWIM_STYLES,
   walkPose,
   zeroPose,
   type Pose,
+  type ReactionKind,
 } from './poses';
 
 export type CharState =
@@ -76,6 +80,13 @@ export class CharacterAnimator {
   private blinkTimer: number;
   private blinking = false;
   private blinkProgress = 0;
+  /** The reaction that is playing, if any. */
+  private reaction: ReactionKind | null = null;
+  private reactionU = 0;
+  private reactionDuration = REACTION_DURATION_S;
+  /** True when the reaction is scrubbed by hand instead of playing. */
+  private reactionFrozen = false;
+  private layerReaction: Pose = zeroPose();
 
   constructor(rig: Rig) {
     this.rig = rig;
@@ -103,6 +114,24 @@ export class CharacterAnimator {
   /** True while the character is performing its idle activity. */
   get isDoingActivity(): boolean {
     return this.activityOn;
+  }
+
+  /**
+   * React to something that happened in the pool.
+   *
+   * The reaction is played on top of whatever the character is doing, and
+   * it does not interrupt it: a character that is swimming keeps swimming
+   * and merely lifts its head.
+   */
+  react(kind: ReactionKind, duration = REACTION_DURATION_S): void {
+    this.reaction = kind;
+    this.reactionU = 0;
+    this.reactionDuration = duration;
+  }
+
+  /** True while a reaction is playing. */
+  get isReacting(): boolean {
+    return this.reaction !== null;
   }
 
   update(dtMs: number): void {
@@ -168,6 +197,18 @@ export class CharacterAnimator {
     blendPose(this.pose, this.pose, 1, this.layerWalk, w.walk);
     blendPose(this.pose, this.pose, 1, this.layerSwim, w.swim);
     blendPose(this.pose, this.pose, 1, this.layerClimb, w.climb);
+
+    // The reaction sits on top of the pose. It fades in and out on its
+    // own, so the character goes back to what it was doing without a jump.
+    if (this.reaction !== null) {
+      if (!this.reactionFrozen) {
+        this.reactionU = Math.min(1, this.reactionU + dt / this.reactionDuration);
+      }
+      const weight = Math.sin(this.reactionU * Math.PI) ** 2;
+      reactionDelta(this.layerReaction, this.reaction, this.reactionU);
+      addPose(this.pose, this.layerReaction, weight);
+      if (this.reactionU >= 1 && !this.reactionFrozen) this.reaction = null;
+    }
 
     this.applyPose(this.pose);
     this.updateBlink(dtMs);
@@ -302,6 +343,13 @@ export class CharacterAnimator {
     this.idleTimer = progress * this.spec.idleDuration;
     this.cooldownLeft = 0;
     this.setState('activity');
+  }
+
+  /** Debug helper: hold a reaction at a given progress. */
+  scrubReaction(kind: ReactionKind, progress = 0.5): void {
+    this.reaction = kind;
+    this.reactionU = Math.min(1, Math.max(0, progress));
+    this.reactionFrozen = true;
   }
 
   destroy(): void {

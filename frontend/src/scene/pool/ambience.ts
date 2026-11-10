@@ -52,6 +52,8 @@ export class Ambience {
   private time = 0;
   private nextBird = 6;
   private nextRipple = 2;
+  /** How bright the day is: the bird sleeps and the petals stop. */
+  private light = 1;
 
   constructor(layout: PoolLayout) {
     this.container.addChild(this.sky, this.petals, this.water);
@@ -84,13 +86,21 @@ export class Ambience {
     this.layout = layout;
   }
 
-  update(dt: number): void {
+  /**
+   * Move the small things along.
+   *
+   * `light` is how bright the day is: the bird only flies in the
+   * daylight, the petals stop falling in the evening, and the glint on
+   * the water becomes the moonlight.
+   */
+  update(dt: number, light = 1): void {
     this.time += dt;
+    this.light = light;
     const layout = this.layout;
 
     // --- the bird -------------------------------------------------
     this.nextBird -= dt;
-    if (!this.bird.alive && this.nextBird <= 0) {
+    if (!this.bird.alive && this.nextBird <= 0 && light > 0.35) {
       this.bird = {
         alive: true,
         x: -30,
@@ -109,7 +119,7 @@ export class Ambience {
     // --- the petals ------------------------------------------------
     for (const petal of this.petalPool) {
       if (!petal.alive) {
-        if (Math.random() < dt * 0.35) {
+        if (Math.random() < dt * 0.35 * light) {
           petal.alive = true;
           petal.x = layout.water.x + Math.random() * layout.water.w;
           petal.y = layout.surfaceY - 10 - Math.random() * layout.deckY * 0.4;
@@ -178,12 +188,14 @@ export class Ambience {
         .fill({ color: 0xffd9e0, alpha: 0.75 });
     }
 
-    // The sun glint and the ambient ripples.
+    // The sun glint and the ambient ripples. In the evening the glint is
+    // the moonlight: dimmer and a little cooler.
     this.water.clear();
-    const glint = 0.12 + Math.sin(this.time * 0.7) * 0.05;
+    const glint = (0.12 + Math.sin(this.time * 0.7) * 0.05) * (0.25 + 0.75 * this.light);
+    const glintColour = this.light > 0.5 ? 0xffffff : 0xbcd6ff;
     this.water
       .ellipse(layout.water.x + layout.water.w * 0.72, layout.surfaceY + 14, 46, 7)
-      .fill({ color: 0xffffff, alpha: glint });
+      .fill({ color: glintColour, alpha: glint });
     for (const ripple of this.ripplePool) {
       if (!ripple.alive) continue;
       const progress = ripple.life / ripple.maxLife;

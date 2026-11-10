@@ -13,6 +13,7 @@ import { observeHostSize } from '../scene/pixi';
 import { CharacterAnimator } from '../scene/characters/animator';
 import { buildRig } from '../scene/characters/rig';
 import { specFor, type IdleActivity, type SwimStyle } from '../scene/characters/spec';
+import type { ReactionKind } from '../scene/characters/poses';
 
 const SWIM_ORDER: SwimStyle[] = ['crawl', 'breaststroke', 'butterfly', 'doggy'];
 const ACTIVITY_ORDER: IdleActivity[] = [
@@ -31,13 +32,20 @@ const UNIT = 190; // pixels per character height
 interface Controls {
   phase: number;
   activityU: number;
+  reactionU: number;
   playing: boolean;
   skeleton: boolean;
 }
 
 export function Lab() {
   const hostRef = useRef<HTMLDivElement>(null);
-  const controlsRef = useRef<Controls>({ phase: 0, activityU: 0.4, playing: true, skeleton: false });
+  const controlsRef = useRef<Controls>({
+    phase: 0,
+    activityU: 0.4,
+    reactionU: 0.35,
+    playing: true,
+    skeleton: false,
+  });
   const [controls, setControls] = useState<Controls>(controlsRef.current);
   const [dump, setDump] = useState('');
   const [error, setError] = useState('');
@@ -128,6 +136,34 @@ export function Lab() {
         const skeletonGraphics = new Graphics();
         scene.addChild(skeletonGraphics);
 
+        // The reactions: the same wave on a character that lies down and on
+        // one that stands, and the look of a swimmer.
+        const reactions: { animator: CharacterAnimator; kind: ReactionKind }[] = [];
+        const REACTIONS: { kind: ReactionKind; state: 'lounging' | 'resting' | 'swimming' }[] = [
+          { kind: 'waveLying', state: 'lounging' },
+          { kind: 'wave', state: 'resting' },
+          { kind: 'look', state: 'swimming' },
+        ];
+        REACTIONS.forEach((item, i) => {
+          const spec = specFor(`lab-react-${item.kind}-${item.state}`, 'subagent');
+          const rig = buildRig(spec);
+          rig.root.position.set(170 + i * 280, 660);
+          rig.root.scale.set(UNIT * spec.height);
+          scene.addChild(rig.root);
+          const animator = new CharacterAnimator(rig);
+          animator.setState(item.state);
+          animator.scrubReaction(item.kind, controlsRef.current.reactionU);
+          animators.push(animator);
+          reactions.push({ animator, kind: item.kind });
+
+          const label = new Text({
+            text: `${item.kind} / ${item.state}`,
+            style: { fontFamily: 'monospace', fontSize: 14, fill: 0x3a2f22 },
+          });
+          label.position.set(170 + i * 280 - 40, 672);
+          scene.addChild(label);
+        });
+
         app.ticker.add((ticker) => {
           const dt = ticker.deltaMS;
           const c = controlsRef.current;
@@ -140,6 +176,10 @@ export function Lab() {
             // Always force the activity in the lab so every variant is visible.
             a.forceActivity(c.activityU);
             a.update(dt);
+          }
+          for (const r of reactions) {
+            r.animator.scrubReaction(r.kind, c.reactionU);
+            r.animator.update(dt);
           }
 
           skeletonGraphics.clear();
@@ -234,6 +274,17 @@ export function Lab() {
             step={0.01}
             value={controls.activityU}
             onChange={(e) => update({ activityU: Number(e.target.value) })}
+          />
+        </label>
+        <label>
+          reaction {controls.reactionU.toFixed(2)}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.005}
+            value={controls.reactionU}
+            onChange={(e) => update({ reactionU: Number(e.target.value) })}
           />
         </label>
         <label>

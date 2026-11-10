@@ -40,7 +40,7 @@ export interface Pose {
 }
 
 export function zeroPose(): Pose {
-  return {
+  return resetPose({
     rootRot: 0,
     bodyPitch: 0,
     bodyRoll: 0,
@@ -56,7 +56,27 @@ export function zeroPose(): Pose {
     kneeL: 0,
     kneeR: 0,
     bob: 0,
-  };
+  });
+}
+
+/** Put every angle back to zero, in place. */
+export function resetPose(out: Pose): Pose {
+  out.rootRot = 0;
+  out.bodyPitch = 0;
+  out.bodyRoll = 0;
+  out.bodyY = 0;
+  out.headPitch = 0;
+  out.headYaw = 0;
+  out.armL = 0;
+  out.armR = 0;
+  out.elbowL = 0;
+  out.elbowR = 0;
+  out.legL = 0;
+  out.legR = 0;
+  out.kneeL = 0;
+  out.kneeR = 0;
+  out.bob = 0;
+  return out;
 }
 
 export function copyPose(from: Pose, to: Pose): Pose {
@@ -94,6 +114,33 @@ export function blendPose(out: Pose, a: Pose, wa: number, b: Pose, wb: number): 
   out.kneeL = a.kneeL * wa + b.kneeL * wb;
   out.kneeR = a.kneeR * wa + b.kneeR * wb;
   out.bob = a.bob * wa + b.bob * wb;
+  return out;
+}
+
+/**
+ * Add a pose on top of another one.
+ *
+ * The reaction is not a layer of its own: it has to sit on top of
+ * whatever the character is doing — lying on a lounger, swimming,
+ * walking — and a blended layer would drag the body towards its own
+ * posture. An offset keeps the reaction where it belongs.
+ */
+export function addPose(out: Pose, delta: Pose, weight: number): Pose {
+  out.rootRot += delta.rootRot * weight;
+  out.bodyPitch += delta.bodyPitch * weight;
+  out.bodyRoll += delta.bodyRoll * weight;
+  out.bodyY += delta.bodyY * weight;
+  out.headPitch += delta.headPitch * weight;
+  out.headYaw += delta.headYaw * weight;
+  out.armL += delta.armL * weight;
+  out.armR += delta.armR * weight;
+  out.elbowL += delta.elbowL * weight;
+  out.elbowR += delta.elbowR * weight;
+  out.legL += delta.legL * weight;
+  out.legR += delta.legR * weight;
+  out.kneeL += delta.kneeL * weight;
+  out.kneeR += delta.kneeR * weight;
+  out.bob += delta.bob * weight;
   return out;
 }
 
@@ -305,6 +352,72 @@ export const SWIM_STYLES: Record<SwimStyle, SwimStyleInfo> = {
   butterfly: { cadence: 0.42, fn: (out, t) => butterfly(out, t) },
   doggy: { cadence: 0.75, fn: (out, t) => doggy(out, t) },
 };
+
+/* ------------------------------------------------------------------ */
+/* Reactions                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a character does when something happens in the pool.
+ *
+ * A reaction is an offset, not a posture: it is added on top of whatever
+ * the character is doing, so a character can wave while it is lying down
+ * or while it is swimming.
+ */
+export type ReactionKind = 'wave' | 'waveLying' | 'look';
+
+/** How long a reaction lasts, in seconds. */
+export const REACTION_DURATION_S = 2.4;
+
+/**
+ * The offset of a reaction at the progress `u`.
+ *
+ * The angles follow the convention of the rest of the file: they are
+ * measured from straight down, and negative means backwards. The head
+ * follows the waving hand a little, the way a person does.
+ *
+ * A character that lies down needs its own wave. The body of a lounger
+ * character is turned a quarter turn, so the same shoulder angle would
+ * send the arm out sideways instead of up into the air.
+ */
+export function reactionDelta(out: Pose, kind: ReactionKind, u: number): Pose {
+  resetPose(out);
+  const wave = Math.sin(u * TAU * 3.5);
+  const lift = Math.min(1, u * 6) * Math.min(1, (1 - u) * 6);
+  switch (kind) {
+    case 'wave': {
+      // The arm goes up and waves; the elbow does the waving.
+      out.armR = -2.35 * lift;
+      out.elbowR = 0.3 + 0.5 * wave * lift;
+      out.headPitch = 0.1 * lift;
+      out.headYaw = -0.2 * lift;
+      out.bob = Math.sin(u * TAU * 2) * 0.008 * lift;
+      break;
+    }
+    case 'waveLying': {
+      // The body of a lounger character is turned a quarter turn, so the
+      // shoulder angle that lifts the arm into the air is a quarter turn
+      // further round than the one that does it for a standing character.
+      // The base pose hangs the arm at -0.3, and the arm points straight
+      // up at about 1.57.
+      out.armR = 1.87 * lift;
+      out.elbowR = 0.3 + 0.55 * wave * lift;
+      out.headPitch = -0.35 * lift;
+      out.headYaw = 0.15 * lift;
+      out.bob = Math.sin(u * TAU * 2) * 0.008 * lift;
+      break;
+    }
+    case 'look': {
+      // The head comes up out of the water.
+      out.headPitch = -0.5 * lift;
+      out.headYaw = 0.18 * lift;
+      break;
+    }
+    default:
+      break;
+  }
+  return out;
+}
 
 /* ------------------------------------------------------------------ */
 /* Idle activities                                                     */
