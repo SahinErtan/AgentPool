@@ -27,7 +27,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Agent",
+        "matcher": "*",
         "hooks": [
           {
             "type": "http",
@@ -39,7 +39,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent",
+        "matcher": "*",
         "hooks": [
           {
             "type": "http",

@@ -99,6 +99,10 @@ class PoolScene:
         self._release_lounger(agent_id)
         self._release_waiting(agent_id)
         self._route_of.pop(agent_id, None)
+        # The agent is gone: the scene forgets it, so a reconcile does not
+        # mistake it for somebody it has never seen.
+        self._known.discard(agent_id)
+        self._dirty.discard(agent_id)
         # One less agent: the pool can be smaller again.
         self._resize_loungers()
 

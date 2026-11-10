@@ -51,6 +51,11 @@ class Settings:
     exit_grace_s: float = 15.0
     journal_enabled: bool = True
     journal_keep_days: int = 7
+    #: The shared token the local port asks for. Empty means the port is
+    #: open to the machine, which is the old behaviour.
+    token: str = ""
+    #: Tell the user with a desktop notification when an agent finishes.
+    notify: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -75,4 +80,6 @@ class Settings:
             journal_keep_days=_env_int(
                 "AGENTPOOL_JOURNAL_KEEP_DAYS", defaults.journal_keep_days
             ),
+            token=os.environ.get("AGENTPOOL_TOKEN", defaults.token).strip(),
+            notify=_env_bool("AGENTPOOL_NOTIFY", defaults.notify),
         )

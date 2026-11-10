@@ -64,10 +64,29 @@ async def replay_scene(scene: SceneAdapter, state: AgentState) -> None:
     the lifecycle events. Replaying the right sequence gives it the same
     lanes and loungers it would have assigned itself.
     """
+    if state.status is AgentStatus.LEAVING:
+        # The character is already on its way out: there is nothing to
+        # place, only something to clean up.
+        await scene.on_agent_removed(state.id)
+        return
     await scene.on_agent_spawned(state)
     if state.status is AgentStatus.WORKING:
         await scene.on_agent_started(state)
     elif state.status is AgentStatus.FINISHED:
+        await scene.on_agent_finished(state)
+
+
+async def update_scene(scene: SceneAdapter, state: AgentState) -> None:
+    """Tell a scene that already knows the agent about a change.
+
+    The reconciler uses it for the agents the scene has placed already: a
+    known agent is never spawned twice, it is only moved. An agent that
+    finished gives its lane back and goes to a lounger, an agent that is
+    leaving gives everything back and is forgotten.
+    """
+    if state.status is AgentStatus.WORKING:
+        await scene.on_agent_started(state)
+    elif state.status in (AgentStatus.IDLE, AgentStatus.FINISHED):
         await scene.on_agent_finished(state)
     elif state.status is AgentStatus.LEAVING:
         await scene.on_agent_removed(state.id)

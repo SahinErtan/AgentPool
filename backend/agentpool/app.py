@@ -11,15 +11,16 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from .api import auth
 from .api.ingest import create_ingest_router
-from .api.state import create_state_router
+from .api.state import create_metrics_router, create_state_router
 from .api.ws import WsHub, create_ws_router
 from .bridge.broker import Broker
-from .bridge.events import AgentStatus
 from .bridge.reconcile import reconcile
 from .bridge.registry import AgentRegistry
 from .config import Settings
-from .scenes.base import replay_scene
+from .metrics import Counters
+from .scenes.base import replay_scene, update_scene
 from .scenes.registry import build_scene
 from .store.journal import Journal
 
@@ -46,8 +47,82 @@ def split_swept(registry, changed):
     return upserts, removals
 
 
+async def sync_scene(scene, states) -> None:
+    """Bring the scene in line with the agents whose state changed.
+
+    An agent the scene knows is only moved; an agent it has never seen is
+    placed. A finished agent gives its lane back, an agent that is leaving
+    gives everything back and is forgotten.
+    """
+    for state in states:
+        if scene.knows(state.id):
+            await update_scene(scene, state)
+        else:
+            await replay_scene(scene, state)
+
+
+def _scene_exit_hook(scene):
+    """A callback that takes an agent out of the scene when it leaves.
+
+    The registry is synchronous, so the scene is told through a task. The
+    callback is called from the websocket handler, where a loop is running.
+    """
+
+    def hook(agent_id: str) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No loop: nothing is running, so there is no scene to tell.
+            return
+        loop.create_task(scene.on_agent_removed(agent_id))
+
+    return hook
+
+
+async def sweep_once(registry, scene, hub) -> None:
+    """Sweep the registry and tell the scene and the browser about it.
+
+    The agents the sweeper drops have to leave the scene as well: or they
+    keep a lane, a lounger or a place at the edge that nobody will ever
+    use, and the pool fills up with ghosts.
+    """
+    changed = registry.sweep()
+    if not changed:
+        return
+    upserts, removals = split_swept(registry, changed)
+
+    for agent_id in removals:
+        await scene.on_agent_removed(agent_id)
+
+    if upserts:
+        # The agents that are still here may have changed their place:
+        # a stalled swimmer climbs out of the water.
+        await sync_scene(scene, upserts)
+        await hub.broadcast(
+            {
+                "type": "agent_upsert",
+                "agents": [hub.agent_view(s) for s in upserts],
+                "scene_payload": scene.describe(),
+            }
+        )
+    if removals:
+        await hub.broadcast(
+            {
+                "type": "agent_remove",
+                "agent_ids": removals,
+                "scene_payload": scene.describe(),
+            }
+        )
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or Settings.from_env()
+    if not auth.is_local_host(settings.host):
+        log.warning(
+            "the backend listens on %s, which is not this machine: the whole "
+            "dashboard is on the network. Set AGENTPOOL_TOKEN to give it a lock.",
+            settings.host,
+        )
 
     registry = AgentRegistry(
         idle_ttl_s=settings.idle_ttl_s,
@@ -62,6 +137,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         keep_days=settings.journal_keep_days,
     )
     hub = WsHub(broker, registry, scene)
+    counters = Counters()
     started_at = time.time()
 
     async def sweeper() -> None:
@@ -69,18 +145,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         while True:
             await asyncio.sleep(10)
             try:
-                changed = registry.sweep()
-                if not changed:
-                    continue
-                # The agents that are gone have to be told that they are
-                # gone: sending them as an update would put them back.
-                upserts, removals = split_swept(registry, changed)
-                if upserts:
-                    await hub.broadcast(
-                        {"type": "agent_upsert", "agents": [hub.agent_view(s) for s in upserts]}
-                    )
-                if removals:
-                    await hub.broadcast({"type": "agent_remove", "agent_ids": removals})
+                await sweep_once(registry, scene, hub)
             except Exception:
                 log.exception("sweeper failed")
 
@@ -102,16 +167,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 changed = reconcile(registry, settings.claude_dir)
                 if not changed:
                     continue
-                for state in changed:
-                    # Only an agent the scene has never seen is placed. The
-                    # ones it knows keep their lane or their lounger, but
-                    # they have to hear about a state that changed.
-                    if not scene.knows(state.id):
-                        await replay_scene(scene, state)
-                    elif state.status is AgentStatus.WORKING:
-                        await scene.on_agent_started(state)
-                    elif state.status is AgentStatus.IDLE:
-                        await scene.on_agent_finished(state)
+                # The scene has to hear about every change: a finished
+                # agent gives its lane back, an agent that is leaving gives
+                # everything back. Without this the safety net fails exactly
+                # where it is needed — the stop hook that never arrived.
+                await sync_scene(scene, changed)
                 await hub.broadcast(
                     {
                         "type": "agent_upsert",
@@ -129,23 +189,47 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             journal.prune()
         except Exception:
             log.exception("the journal could not be pruned")
+
+        # The browser may drop an agent when its character walks out of the
+        # gate. The scene has to hear about it too, or the agent keeps its
+        # lounger for ever.
+        registry.set_exit_hook(_scene_exit_hook(scene))
+
         try:
             recovered = reconcile(registry, settings.claude_dir)
             if recovered:
                 log.info("recovered %s agents from disk", recovered)
-                for state in registry.snapshot():
-                    await replay_scene(scene, state)
-                await hub.broadcast(
-                    {
-                        "type": "snapshot",
-                        "scene": scene.scene_id,
-                        "ts": time.time(),
-                        "agents": [hub.agent_view(state) for state in registry.snapshot()],
-                        "scene_payload": scene.describe(),
-                    }
-                )
         except Exception:
             log.exception("reconciliation failed")
+
+        # The journal holds what happened while the backend was down. It is
+        # replayed after the disk, so the disk has the last word. A broken
+        # journal must never stop the backend.
+        try:
+            replay_into = getattr(journal, "replay_into", None)
+            if replay_into is None:
+                log.info("the journal cannot be replayed yet: the disk is the truth")
+            else:
+                replayed = await replay_into(registry)
+                if replayed:
+                    log.info("replayed %s agents from the journal", replayed)
+        except Exception:
+            log.exception("the journal could not be replayed")
+
+        try:
+            for state in registry.snapshot():
+                await replay_scene(scene, state)
+            await hub.broadcast(
+                {
+                    "type": "snapshot",
+                    "scene": scene.scene_id,
+                    "ts": time.time(),
+                    "agents": [hub.agent_view(state) for state in registry.snapshot()],
+                    "scene_payload": scene.describe(),
+                }
+            )
+        except Exception:
+            log.exception("the scene could not be set up")
         tasks = [asyncio.create_task(sweeper()), asyncio.create_task(reconciler())]
         try:
             yield
@@ -160,9 +244,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.state.scene = scene
     app.state.hub = hub
 
-    app.include_router(create_ingest_router(registry, broker, scene, journal))
-    app.include_router(create_state_router(registry, scene, started_at))
-    app.include_router(create_ws_router(hub))
+    app.include_router(
+        create_ingest_router(registry, broker, scene, journal, counters, settings)
+    )
+    app.include_router(create_state_router(registry, scene, started_at, journal, settings.token))
+    app.include_router(create_ws_router(hub, settings.token))
+    app.include_router(create_metrics_router(broker, hub, registry, counters))
 
     dist = settings.frontend_dist
     if dist.is_dir():

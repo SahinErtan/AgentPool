@@ -18,6 +18,7 @@ dist/
 
 # The frontend test bundle
 frontend/test/.build/
+frontend/test/.build-*/
 
 # The TypeScript build cache
 frontend/tsconfig.tsbuildinfo

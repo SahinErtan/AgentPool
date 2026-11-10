@@ -3,7 +3,7 @@ PYENV_VERSION := 3.11.11
 VENV        := $(HOME)/.pyenv/versions/3.11.11/envs/agentpool-env
 PORT        := 38000
 
-.PHONY: help venv install dev server server-stop frontend build test test-backend test-frontend lab clean plugin plugin-uninstall
+.PHONY: help venv install dev server server-stop frontend build test test-backend test-frontend lab agentpool clean plugin plugin-uninstall
 
 help:
 	@echo "make venv      - create the python 3.11 environment"
@@ -14,6 +14,7 @@ help:
 	@echo "make build     - build the frontend into frontend/dist"
 	@echo "make test      - run the backend and the frontend test suites"
 	@echo "make lab       - open the animation lab (frontend/?lab)"
+	@echo "make agentpool - ask the running pool what the agents are doing"
 	@echo "make plugin     - install the Claude Code plugin from ./plugin"
 
 venv:
@@ -70,6 +71,11 @@ test-frontend:
 
 lab:
 	@echo "open http://127.0.0.1:5173/?lab"
+
+# Ask the running pool what the agents are doing. The arguments go straight
+# through: `make agentpool ARGS="--agent session:abc"`.
+agentpool:
+	@PYTHONPATH=backend $(VENV)/bin/python -m agentpool.cli $(ARGS)
 
 # The plugin is installed from a local marketplace, so the plugin always
 # matches the code in this working copy.
