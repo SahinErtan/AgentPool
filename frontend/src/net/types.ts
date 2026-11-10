@@ -20,6 +20,14 @@ export interface AgentPresentation {
   props: Record<string, unknown>;
 }
 
+/** One thing that happened to an agent, as the backend remembers it. */
+export interface AgentEventView {
+  ts: number;
+  type: string;
+  tool: string | null;
+  detail: string | null;
+}
+
 export interface AgentView {
   id: string;
   kind: AgentKind;
@@ -40,6 +48,8 @@ export interface AgentView {
   leaving_deadline: number | null;
   scene: string;
   presentation: AgentPresentation;
+  /** The last few things that happened to this agent. */
+  events?: AgentEventView[];
 }
 
 export interface SessionEventView {

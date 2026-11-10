@@ -5,12 +5,28 @@
  * the panels — the 60 fps path never touches React state.
  */
 
-import type { AgentView, SessionEventView } from '../net/types';
+import type { AgentStatus, AgentView, SessionEventView } from '../net/types';
 
 export interface Toast {
   id: number;
   message: string;
   kind: 'info' | 'warn';
+}
+
+/** Which agents the list shows. */
+export type StatusFilter = 'all' | 'working' | 'idle' | 'done';
+export type KindFilter = 'all' | 'session' | 'subagent' | 'mcp' | 'workflow';
+
+export interface Filter {
+  status: StatusFilter;
+  kind: KindFilter;
+}
+
+/** What the panel remembers about an agent that is no longer there. */
+export interface AgentMemory {
+  status: AgentStatus;
+  finishedAt: number | null;
+  lastEventAt: number;
 }
 
 export interface StoreState {
@@ -23,6 +39,16 @@ export interface StoreState {
   selectedId: string | null;
   /** The agent the pointer is over in the scene. */
   hoveredId: string | null;
+  /** What the list shows. */
+  filter: Filter;
+  /**
+   * A short memory of the agents that have been here.
+   *
+   * A finished agent walks out of the scene and is gone, but the panel
+   * still wants to say how many finished in the last five minutes. The
+   * memory outlives the agent, and it is thrown away after a while.
+   */
+  memory: Map<string, AgentMemory>;
   toast: Toast | null;
   lastFrameAt: number;
 }
@@ -33,6 +59,9 @@ const listeners = new Set<Listener>();
 
 let toastId = 0;
 
+/** How long the memory of an agent is kept. */
+const MEMORY_TTL_MS = 10 * 60 * 1000;
+
 let state: StoreState = {
   connected: false,
   scene: 'pool',
@@ -41,6 +70,8 @@ let state: StoreState = {
   feed: [],
   selectedId: null,
   hoveredId: null,
+  filter: { status: 'all', kind: 'all' },
+  memory: new Map(),
   toast: null,
   lastFrameAt: 0,
 };
@@ -79,7 +110,7 @@ export const store = {
   replaceAgents(agents: AgentView[]) {
     const map = new Map<string, AgentView>();
     for (const agent of agents) map.set(agent.id, agent);
-    state = { ...state, agents: map, lastFrameAt: Date.now() };
+    state = { ...state, agents: map, memory: remember(state.memory, agents), lastFrameAt: Date.now() };
     emit();
   },
 
@@ -87,7 +118,7 @@ export const store = {
     if (agents.length === 0) return;
     const map = new Map(state.agents);
     for (const agent of agents) map.set(agent.id, agent);
-    state = { ...state, agents: map, lastFrameAt: Date.now() };
+    state = { ...state, agents: map, memory: remember(state.memory, agents), lastFrameAt: Date.now() };
     emit();
   },
 
@@ -129,4 +160,40 @@ export const store = {
     state = { ...state, hoveredId: agentId };
     emit();
   },
+
+  /** Narrow the list down. */
+  setFilter(filter: Partial<Filter>) {
+    const next = { ...state.filter, ...filter };
+    if (next.status === state.filter.status && next.kind === state.filter.kind) return;
+    state = { ...state, filter: next };
+    emit();
+  },
 };
+
+/**
+ * Remember what happened to the agents, and forget the old ones.
+ *
+ * The memory outlives the agent: a character that finished walks out of
+ * the scene, but the panel still counts it for a few minutes.
+ */
+function remember(
+  memory: Map<string, AgentMemory>,
+  agents: AgentView[],
+): Map<string, AgentMemory> {
+  const next = new Map(memory);
+  for (const agent of agents) {
+    next.set(agent.id, {
+      status: agent.status,
+      finishedAt: agent.finished_at,
+      lastEventAt: agent.last_event_at,
+    });
+  }
+
+  const cutoff = Date.now() - MEMORY_TTL_MS;
+  for (const [id, entry] of next) {
+    if (Math.max(entry.lastEventAt * 1000, (entry.finishedAt ?? 0) * 1000) < cutoff) {
+      next.delete(id);
+    }
+  }
+  return next;
+}

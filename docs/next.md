@@ -26,8 +26,8 @@ conversation about it is not.
 | 12 | The camera, a pool that grows | Polish; nice, not needed | medium |
 | 13 | Licence, GitHub, CI, release | Only worth it when there is something to share | medium |
 
-Items 1–3 are done — they were Sprint 9. Items 4–8 are the dashboard.
-Items 9–12 are the pool. Item 13 is packaging.
+Items 1–3 are done — they were Sprint 9. Items 4–8 are done — they were
+Sprint 10, the dashboard. Items 9–12 are the pool. Item 13 is packaging.
 
 ---
 
@@ -62,34 +62,39 @@ older than the canvas — the renderer was resized by the observer but the
 layout was not, so the pool was drawn in the wrong size and a click landed
 on the wrong character. The scene now follows the renderer.
 
-## Sprint 10 — the dashboard
+## Sprint 10 — the dashboard (done)
 
 Things that make it more useful to look at.
 
-### 4. A summary
+### 4. A summary — done
 
-"3 working, 2 idle, 4 finished in the last five minutes" — a line under the
-top bar. Right now the counts are there but there is no history.
+A line at the top of the panel: "3 working, 2 idle, 0 done", and how many
+agents finished in the last five minutes. The last number outlives the
+agents: a character that finishes walks out of the scene, but the panel
+keeps a short memory of it.
 
-### 5. A filter
+### 5. A filter — done
 
-Only the working ones, only the subagents, only one kind. The list holds
-everything and the panel is narrow.
+Chips for the status (All, Working, Idle, Done) and a dropdown for the kind
+(every kind, sessions, subagents, MCP servers, workflows). The two work
+together.
 
-### 6. A timeline
+### 6. A timeline — done
 
-A row per agent with a bar for when it was working. The journal already
-knows every start and finish, so this is a matter of reading it back.
+A thin bar under every agent row, showing when it was working in the last
+fifteen minutes. The window is short on purpose: a person wants to see
+whether the agent is busy now, not to read a day.
 
-### 7. The recent tool calls
+### 7. The recent tool calls — done
 
-The inspector shows the session events, but not which tool an agent is using
-right now. The `tool_name` is there; a short history is not.
+The backend now sends the last events of every agent, with the tool that
+was used. The inspector shows them instead of the session's own feed.
 
-### 8. A command in the plugin
+### 8. A command in the plugin — done
 
-`/agentpool` opens the dashboard, and maybe `/agentpool stop` shuts the
-backend down. Right now the plugin only has hooks.
+`/agentpool` asks the pool what the agents are doing: it reads the state
+of the backend and reports the working ones, what they are doing and what
+looks off.
 
 ## Sprint 11 — the pool
 
@@ -144,8 +149,7 @@ a chore.
 
 ## What comes next
 
-The dashboard: the summary, the filter and the timeline. The summary and
-the filter are small and they belong together — one line that says what is
-happening, and a way to narrow the list down to the part you care about.
-The timeline is the bigger one: it reads the journal back and draws when
-each agent was working.
+The pool: the reactions first — when a subagent finishes, the others look
+up — and then the day and night. The pool is the part that is already
+pleasant to look at, so it can wait; the panel is now useful with twenty
+agents in it.

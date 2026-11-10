@@ -117,10 +117,88 @@ body {
   color: #8fb3c9;
 }
 
+/* --- The summary --------------------------------------------------- */
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  padding: 0.6rem 1rem;
+  background: #08131c;
+  border-bottom: 1px solid #123047;
+  font-size: 12px;
+}
+
+.summary__item {
+  color: #8fb3c9;
+  white-space: nowrap;
+}
+
+.summary__item--working {
+  color: #52d273;
+}
+
+.summary__item--done {
+  color: #d8b25a;
+}
+
+.summary__item--recent {
+  color: #7fc7e8;
+}
+
+/* --- The filters ---------------------------------------------------- */
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.chip {
+  padding: 0.2rem 0.55rem;
+  background: #0f2231;
+  border: 1px solid #17354a;
+  border-radius: 999px;
+  color: #8fb3c9;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: #2a6b8f;
+  color: #cfe6f3;
+}
+
+.chip.is-on {
+  background: #143246;
+  border-color: #52d273;
+  color: #d6f5e2;
+}
+
+.filters__kind {
+  padding: 0.25rem 0.4rem;
+  background: #0f2231;
+  border: 1px solid #17354a;
+  border-radius: 6px;
+  color: #8fb3c9;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
 .agent-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 1rem;
 }
 
@@ -147,16 +225,27 @@ body {
 }
 
 .agent {
-  display: grid;
-  grid-template-columns: 1.2rem 1fr 5.5rem 5rem 4.5rem;
-  align-items: center;
-  gap: 0.5rem;
   padding: 0.45rem 0.6rem;
   background: #0f2231;
   border: 1px solid #17354a;
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
+}
+
+.agent__main {
+  display: grid;
+  /* The label takes what is left; the time is only as wide as it has to
+     be. The panel is narrow, so the details go on a second line. */
+  grid-template-columns: 1.2rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.agent__meta {
+  display: flex;
+  gap: 0.6rem;
+  margin: 0.1rem 0 0 1.7rem;
 }
 
 .agent:hover {
@@ -187,6 +276,7 @@ body {
 
 .agent__label {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .agent__status,
@@ -195,6 +285,24 @@ body {
   color: #8fb3c9;
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 12px;
+}
+
+/* The last fifteen minutes of this agent. */
+.agent__timeline {
+  position: relative;
+  height: 3px;
+  margin-top: 0.4rem;
+  background: #0a1a26;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.agent__timeline-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #52d273;
+  border-radius: 2px;
 }
 
 .stage {
@@ -377,12 +485,7 @@ body {
     width: 260px;
   }
 
-  .agent {
-    grid-template-columns: 1.2rem 1fr 4.5rem;
-  }
-
-  .agent__slot,
-  .agent__time {
+  .agent__slot {
     display: none;
   }
 }
@@ -455,6 +558,16 @@ body {
   color: #52d273;
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 10px;
+}
+
+/* The tool that was used, when the event carries one. */
+.inspector__event-tool {
+  color: #d8b25a;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 10px;
+  background: #2a2410;
+  border-radius: 3px;
+  padding: 0 0.25rem;
 }
 
 .inspector__event-detail {

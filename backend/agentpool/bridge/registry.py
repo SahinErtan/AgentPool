@@ -54,6 +54,9 @@ class AgentState:
             "finished_at": self.finished_at,
             "event_count": self.event_count,
             "leaving_deadline": self.leaving_deadline,
+            # The last few things that happened to this agent, so the
+            # inspector can show what it is doing and not only what it is.
+            "events": list(self.last_events),
         }
 
 

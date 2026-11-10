@@ -199,3 +199,28 @@ def test_the_event_ring_buffer_is_bounded():
     agent = registry.get("sub:a1")
     assert len(agent.last_events) == 50
     assert agent.event_count == 81
+
+
+def test_the_agent_carries_its_last_events_to_the_browser():
+    """The inspector shows what the agent did, so the events travel with it."""
+    registry = make_registry()
+    spawn(registry)
+    registry.apply(
+        AgentEvent.new(
+            type="note",
+            agent_id="sub:a1",
+            kind=AgentKind.SUBAGENT,
+            session_id="s1",
+            parent_id="session:s1",
+            status=AgentStatus.WORKING,
+            label="Explore",
+            detail="Read",
+            tool_name="Read",
+        )
+    )
+
+    payload = registry.get("sub:a1").to_dict()
+
+    assert len(payload["events"]) == 2
+    assert payload["events"][-1]["tool"] == "Read"
+    assert payload["events"][-1]["detail"] == "Read"

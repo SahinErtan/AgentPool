@@ -6,6 +6,7 @@ import { useStore } from './state/useStore';
 import { AgentList } from './ui/AgentList';
 import { Inspector } from './ui/Inspector';
 import { Legend } from './ui/Legend';
+import { Summary } from './ui/Summary';
 import { Toast } from './ui/Toast';
 import { TopBar } from './ui/TopBar';
 
@@ -39,6 +40,7 @@ export function App() {
       <main className="stage">
         <PoolCanvas />
         <div className="stage__overlay">
+          <Summary />
           <Legend />
           <AgentList />
           <Inspector />

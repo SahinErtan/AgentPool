@@ -20,6 +20,13 @@ time, and every character is different.
 - The details of an agent when you click it: the folder it works in, the
   prompt it got, how long it has been running. A character in the pool can
   be clicked as well as a row in the list.
+- A summary of the pool: how many are working, how many are idle, how many
+  finished in the last five minutes.
+- A filter for the list, and a bar under every agent that shows when it was
+  working in the last fifteen minutes.
+
+Inside Claude Code, `/agentpool` asks the pool what the agents are doing and
+reports it back.
 
 ## Install
 

@@ -1,3 +1,4 @@
+import type { AgentView } from '../net/types';
 import { store } from '../state/store';
 import { useStore } from '../state/useStore';
 
@@ -82,7 +83,7 @@ export function Inspector() {
         <Row label="Id" value={agent.id} />
       </div>
 
-      <EventRing agentId={agent.id} sessionId={agent.session_id} />
+      <EventRing agent={agent} />
     </section>
   );
 }
@@ -90,16 +91,39 @@ export function Inspector() {
 /**
  * What happened to this agent, most recent first.
  *
- * The backend keeps a feed of the session events; the ones that belong to
- * this agent are the ones that share its session.
+ * The backend remembers the last few events of every agent, with the tool
+ * that was used. When there are none — an agent that was recovered from
+ * the disk — the session's own feed is shown instead.
  */
-function EventRing({ agentId, sessionId }: { agentId: string; sessionId: string | null }) {
+function EventRing({ agent }: { agent: AgentView }) {
   const { feed } = useStore();
-  const events = feed
-    .filter((event) => (sessionId ? event.session_id === sessionId : false))
-    .slice(0, 12);
 
-  if (events.length === 0) {
+  const own = agent.events ?? [];
+  const rows =
+    own.length > 0
+      ? own
+          .slice()
+          .reverse()
+          .slice(0, 12)
+          .map((event, index) => ({
+            key: `${event.ts}-${index}`,
+            type: event.type,
+            tool: event.tool,
+            detail: event.detail,
+            ts: event.ts,
+          }))
+      : feed
+          .filter((event) => (agent.session_id ? event.session_id === agent.session_id : false))
+          .slice(0, 12)
+          .map((event) => ({
+            key: event.event_id,
+            type: event.type,
+            tool: null,
+            detail: event.detail,
+            ts: event.ts,
+          }));
+
+  if (rows.length === 0) {
     return (
       <div className="inspector__ring">
         <h3>Events</h3>
@@ -112,18 +136,19 @@ function EventRing({ agentId, sessionId }: { agentId: string; sessionId: string 
     <div className="inspector__ring">
       <h3>Events</h3>
       <ul>
-        {events.map((event) => (
-          <li key={event.event_id}>
-            <span className="inspector__event-type">{event.type}</span>
-            <span className="inspector__event-detail">{event.detail ?? ''}</span>
+        {rows.map((row) => (
+          <li key={row.key}>
+            <span className="inspector__event-type">{row.type}</span>
+            {row.tool ? <span className="inspector__event-tool">{row.tool}</span> : null}
+            <span className="inspector__event-detail">{row.detail ?? ''}</span>
             <span className="inspector__event-time">
-              {new Date(event.ts * 1000).toLocaleTimeString()}
+              {new Date(row.ts * 1000).toLocaleTimeString()}
             </span>
           </li>
         ))}
       </ul>
       <p className="inspector__footnote">
-        The id of this agent is <code>{agentId}</code>.
+        The id of this agent is <code>{agent.id}</code>.
       </p>
     </div>
   );
