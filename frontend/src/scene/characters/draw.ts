@@ -243,3 +243,41 @@ export function drawSnack(spec: CharacterSpec, sk: Skeleton): Graphics {
   g.circle(-s * 0.14, -s * 0.42, s * 0.16).fill({ color: 0xffffff, alpha: 0.35 });
   return g;
 }
+
+/** A folded newspaper, with the columns of print on it. */
+export function drawNewspaper(_spec: CharacterSpec, sk: Skeleton): Graphics {
+  const g = new Graphics();
+  const s = sk.limb * 1.8;
+  g.moveTo(0, -s * 0.5).lineTo(s * 0.92, -s * 0.2).lineTo(s * 0.92, s * 0.5).lineTo(0, s * 0.72)
+    .closePath()
+    .fill(0xf7f4ec);
+  g.moveTo(0, -s * 0.5).lineTo(s * 0.92, -s * 0.2).stroke({ width: s * 0.05, color: 0x9a9184 });
+  // The columns of print.
+  for (let column = 0; column < 2; column += 1) {
+    const x = s * (0.2 + column * 0.36);
+    for (let line = 0; line < 4; line += 1) {
+      const y = -s * 0.28 + line * s * 0.2;
+      g.moveTo(x, y).lineTo(x + s * 0.28, y + s * 0.06).stroke({
+        width: s * 0.045,
+        color: 0x8f877a,
+        alpha: 0.8,
+      });
+    }
+  }
+  return g;
+}
+
+/** Two cards, one in each hand. */
+export function drawCards(_spec: CharacterSpec, sk: Skeleton): Graphics {
+  const g = new Graphics();
+  const s = sk.limb * 0.8;
+  g.roundRect(-s * 0.5, -s * 0.72, s, s * 1.44, s * 0.12).fill(0xfdfdfb);
+  g.roundRect(-s * 0.42, -s * 0.62, s * 0.84, s * 1.24, s * 0.1).fill(0xffffff);
+  g.circle(0, 0, s * 0.26).fill(0xd8484f);
+  g.moveTo(-s * 0.5, -s * 0.72).lineTo(s * 0.5, s * 0.72).stroke({
+    width: s * 0.06,
+    color: 0xb9b2a6,
+    alpha: 0.7,
+  });
+  return g;
+}

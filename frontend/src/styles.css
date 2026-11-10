@@ -22,12 +22,14 @@ body {
 .lab {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
 }
 
+/* The lab is taller than the screen: it scrolls, so that every swim
+   style, every activity and every reaction is on one page. */
 .lab-stage {
-  flex: 1;
-  min-height: 0;
+  flex: none;
+  height: 1320px;
   position: relative;
 }
 

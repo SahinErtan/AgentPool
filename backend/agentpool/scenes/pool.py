@@ -16,7 +16,10 @@ from ..bridge.events import AgentStatus, SessionEvent
 from ..bridge.registry import AgentState
 
 LANES = 4
-LOUNGERS = 6
+# The pool has a minimum of six loungers and grows with the crowd, so that
+# a busy afternoon does not turn into a queue at the gate.
+MIN_LOUNGERS = 6
+MAX_LOUNGERS = 12
 # When every lounger is taken, the agent waits at the pool edge instead of
 # standing on somebody's feet.
 WAITING = 4
@@ -47,44 +50,57 @@ class PoolScene:
         self._known: set[str] = set()
         # The agents whose presentation changed without a lifecycle event.
         self._dirty: set[str] = set()
+        # How many loungers the pool has right now.
+        self._lounger_count = MIN_LOUNGERS
 
     # -- lifecycle ----------------------------------------------------
 
     async def on_agent_spawned(self, agent: AgentState) -> None:
         self._known.add(agent.id)
+        # The pool grows before the agent is placed, so that it finds a
+        # lounger of its own instead of waiting at the edge.
+        self._resize_loungers(extra=1)
         if agent.status is AgentStatus.WORKING:
-            self._assign_route(agent, from_point=GATE, to_point=LADDER, route="walk")
+            self._assign_route(agent.id, from_point=GATE, to_point=LADDER, route="walk")
         else:
             lounger = self._take_lounger(agent.id)
             if lounger is None:
-                self._send_to_waiting(agent)
+                self._send_to_waiting(agent.id)
             else:
                 self._assign_route(
-                    agent, from_point=GATE, to_point=f"lounger:{lounger}", route="walk"
+                    agent.id, from_point=GATE, to_point=f"lounger:{lounger}", route="walk"
                 )
+        self._resize_loungers()
 
     async def on_agent_started(self, agent: AgentState) -> None:
         self._release_lounger(agent.id)
         self._release_waiting(agent.id)
         lane = self._take_lane(agent.id)
-        self._assign_route(agent, from_point=LADDER, to_point=LADDER, route="descend")
+        self._assign_route(agent.id, from_point=LADDER, to_point=LADDER, route="descend")
         self._lane_of[agent.id] = lane
+        # The agent is in the water now, so the pool can be smaller.
+        self._resize_loungers()
 
     async def on_agent_finished(self, agent: AgentState) -> None:
+        # The agent comes out of the water and wants a lounger of its own.
+        self._resize_loungers(extra=1)
         self._release_lane(agent.id)
         lounger = self._take_lounger(agent.id)
         if lounger is None:
-            self._send_to_waiting(agent)
+            self._send_to_waiting(agent.id)
         else:
             self._assign_route(
-                agent, from_point=LADDER, to_point=f"lounger:{lounger}", route="ascend"
+                agent.id, from_point=LADDER, to_point=f"lounger:{lounger}", route="ascend"
             )
+        self._resize_loungers()
 
     async def on_agent_removed(self, agent_id: str) -> None:
         self._release_lane(agent_id)
         self._release_lounger(agent_id)
         self._release_waiting(agent_id)
         self._route_of.pop(agent_id, None)
+        # One less agent: the pool can be smaller again.
+        self._resize_loungers()
 
     async def on_session_event(self, event: SessionEvent) -> None:
         return None
@@ -114,7 +130,7 @@ class PoolScene:
         current = self._lounger_of.get(agent_id)
         if current is not None and self._lounger_occupant.get(current) == agent_id:
             return current
-        for lounger in range(LOUNGERS):
+        for lounger in range(self._lounger_count):
             if lounger not in self._lounger_occupant:
                 self._lounger_occupant[lounger] = agent_id
                 self._lounger_of[agent_id] = lounger
@@ -127,18 +143,50 @@ class PoolScene:
             del self._lounger_occupant[lounger]
             self._promote_waiting()
 
-    def _send_to_waiting(self, agent: AgentState) -> None:
+    def _desired_loungers(self, extra: int = 0) -> int:
+        """How many loungers the pool should have for this crowd.
+
+        The loungers are for the agents that are not working, so it is them
+        that are counted. The pool never shrinks below six and never grows
+        beyond twelve.
+        """
+        idle = len(self._lounger_of) + len(self._waiting_of) + len(self._overflow) + extra
+        return max(MIN_LOUNGERS, min(MAX_LOUNGERS, idle))
+
+    def _resize_loungers(self, extra: int = 0) -> None:
+        """The pool grows and shrinks with the crowd.
+
+        When a lounger disappears, the agent that was on it goes back to the
+        edge of the pool and the others take their chances.
+        """
+        wanted = self._desired_loungers(extra)
+        if wanted == self._lounger_count:
+            return
+        self._lounger_count = wanted
+
+        # The loungers that no longer exist are given up.
+        for lounger in sorted(self._lounger_occupant, reverse=True):
+            if lounger < wanted:
+                break
+            agent_id = self._lounger_occupant.pop(lounger)
+            self._lounger_of.pop(agent_id, None)
+            self._send_to_waiting(agent_id)
+            self._dirty.add(agent_id)
+
+        self._promote_waiting()
+
+    def _send_to_waiting(self, agent_id: str) -> None:
         """There is no free lounger, so the agent waits at the pool edge."""
-        slot = self._take_waiting(agent.id)
+        slot = self._take_waiting(agent_id)
         if slot is None:
             # Even the pool edge is full: the agent waits at the gate, in the
             # queue for the first place that frees up.
-            if agent.id not in self._overflow:
-                self._overflow.append(agent.id)
-            self._assign_route(agent, from_point=GATE, to_point=GATE, route="wait")
+            if agent_id not in self._overflow:
+                self._overflow.append(agent_id)
+            self._assign_route(agent_id, from_point=GATE, to_point=GATE, route="wait")
             return
         self._assign_route(
-            agent, from_point=GATE, to_point=f"waiting:{slot}", route="walk"
+            agent_id, from_point=GATE, to_point=f"waiting:{slot}", route="walk"
         )
 
     def _take_waiting(self, agent_id: str) -> Optional[int]:
@@ -198,13 +246,13 @@ class PoolScene:
 
     def _assign_route(
         self,
-        agent: AgentState,
+        agent_id: str,
         *,
         from_point: str,
         to_point: str,
         route: str,
     ) -> None:
-        self._route_of[agent.id] = {"from": from_point, "to": to_point, "route": route}
+        self._route_of[agent_id] = {"from": from_point, "to": to_point, "route": route}
 
     # -- presentation -------------------------------------------------
 
@@ -212,7 +260,7 @@ class PoolScene:
         return {
             "scene": self.scene_id,
             "lanes": LANES,
-            "loungers": LOUNGERS,
+            "loungers": self._lounger_count,
             "waiting": WAITING,
             "gate": GATE,
             "ladder": LADDER,

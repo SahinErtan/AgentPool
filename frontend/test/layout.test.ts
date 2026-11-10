@@ -111,3 +111,23 @@ test('the number of loungers and waiting spots comes from the scene', () => {
   const last = layout.loungers[layout.loungers.length - 1];
   assert.ok(last.x + last.w <= layout.width);
 });
+
+test('the pool can have more loungers than it started with', () => {
+  // The pool grows with the crowd, so the layout has to hold more of them
+  // without letting them overlap.
+  for (const count of [6, 9, 12]) {
+    const layout = computeLayout(1200, 727, count, 4);
+    assert.equal(layout.loungers.length, count);
+    for (let index = 1; index < layout.loungers.length; index += 1) {
+      const previous = layout.loungers[index - 1];
+      const current = layout.loungers[index];
+      assert.ok(
+        previous.x + previous.w <= current.x,
+        `two loungers overlap at ${previous.x} and ${current.x}`,
+      );
+    }
+    for (const slot of layout.loungers) {
+      assert.ok(slot.x >= 0 && slot.x + slot.w <= layout.width, 'a lounger is off the canvas');
+    }
+  }
+});

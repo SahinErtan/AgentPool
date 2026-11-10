@@ -271,11 +271,17 @@ export class CharacterAnimator {
     const book = this.props.book;
     const phone = this.props.phone;
     const snack = this.props.snack;
+    const newspaper = this.props.newspaper;
+    const cards = this.props.cards;
 
     cup.visible = showing && this.spec.idleActivity === 'tea';
     book.visible = showing && this.spec.idleActivity === 'book';
-    phone.visible = showing && this.spec.idleActivity === 'phone';
+    phone.visible =
+      showing &&
+      (this.spec.idleActivity === 'phone' || this.spec.idleActivity === 'call');
     snack.visible = showing && this.spec.idleActivity === 'snack';
+    newspaper.visible = showing && this.spec.idleActivity === 'newspaper';
+    cards.visible = showing && this.spec.idleActivity === 'cards';
 
     // The prop sits in the hand; the layer counter-rotates so a raised cup
     // stays upright instead of tipping with the wrist.
@@ -287,6 +293,8 @@ export class CharacterAnimator {
     if (book.visible) book.position.set(0, -this.rig.skeleton.limb * 1.6);
     if (phone.visible) phone.position.set(0, -this.rig.skeleton.limb * 1.2);
     if (snack.visible) snack.position.set(0, -this.rig.skeleton.limb * 1.3);
+    if (newspaper.visible) newspaper.position.set(0, -this.rig.skeleton.limb * 1.2);
+    if (cards.visible) cards.position.set(0, -this.rig.skeleton.limb * 1.1);
   }
 
   /** Give the character its underwater twin. */

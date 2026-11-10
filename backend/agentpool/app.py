@@ -100,6 +100,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                     {
                         "type": "agent_upsert",
                         "agents": [hub.agent_view(state) for state in changed],
+                        "scene_payload": scene.describe(),
                     }
                 )
             except Exception:

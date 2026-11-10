@@ -11,6 +11,9 @@ out through the gate, and the next agent walks in through the same gate.
 There are no picture assets. Every character is drawn from vectors at run
 time, and every character is different.
 
+The pool has a morning and an evening: the light on the water follows the
+clock, the lamps come on when the sun goes down, and sometimes it rains.
+
 ![the pool](docs/pool.png)
 
 ## What it shows
@@ -24,6 +27,8 @@ time, and every character is different.
   finished in the last five minutes.
 - A filter for the list, and a bar under every agent that shows when it was
   working in the last fifteen minutes.
+- The pool itself: the agents swim, they lie on the loungers with a cup of
+  tea or a newspaper, and when one of them finishes the others wave.
 
 Inside Claude Code, `/agentpool` asks the pool what the agents are doing and
 reports it back.

@@ -37,6 +37,9 @@ const ACTIVITIES: { label: string; hint: string }[] = [
   { label: 'Stretch', hint: 'arms up' },
   { label: 'Snack', hint: 'something to eat' },
   { label: 'Chat', hint: 'a bubble above the head' },
+  { label: 'Newspaper', hint: 'the paper and the columns' },
+  { label: 'Cards', hint: 'dealing them out' },
+  { label: 'Call', hint: 'the phone at the ear' },
 ];
 
 /** What the symbols in the agent list mean, and what the characters wear. */

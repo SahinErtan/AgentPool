@@ -96,32 +96,43 @@ was used. The inspector shows them instead of the session's own feed.
 of the backend and reports the working ones, what they are doing and what
 looks off.
 
-## Sprint 11 — the pool
+## Sprint 11 — the pool (mostly done)
 
 Things that make it a nicer place.
 
-### 9. The reactions
+### 9. The reactions — done
 
-When a subagent finishes, the others could look up. A wave, a raised glass.
-This is the one thing that would make the pool feel like a place where
-something is happening.
+When an agent finishes, the others react: the ones on the deck wave, the
+ones in the water lift their head. A reaction is an offset that is added on
+top of whatever the character is doing, so a character can wave while it is
+lying down. The animation lab has a row of reactions and a scrubber.
 
-### 10. Day and night, and weather
+### 10. Day and night, and weather — done
 
-The sky, the light on the water and the colour of the pool follow the time
-of day; rain on the water, ripples, the umbrella that appears when it rains.
-The parasol is drawn but never moves.
+The sky, the light on the water and the colour of the pool follow the
+clock; the lamps come on when the sun goes down, the stars come out, the
+bird stops flying and the petals stop falling. The weather changes on its
+own: the sky clouds over and sometimes it rains, and the rain fades in over
+a minute instead of starting all at once.
 
-### 11. More idle activities
+### 11. More idle activities — done
 
-There are eight; a newspaper, a phone call, a game of cards and a stretching
-routine would each need a prop and a pose.
+A newspaper, a game of cards and a phone call, each with a prop and a
+pose. There are eleven now.
 
-### 12. The camera, and a pool that grows
+### 12. A pool that grows with the crowd — done
+
+The pool has a minimum of six loungers and grows to twelve when it is
+busy, and it shrinks again when the agents leave. The scene description
+travels with the agents, so the frontend knows.
+
+### The camera — not done
 
 A slow pan along the deck, or a zoom towards the character you clicked.
-Six loungers is a number the backend owns; it could be a number that depends
-on how many agents are around.
+It is the one item of Sprint 11 that is left. A camera on a pool that
+fills the whole screen shows the edges of the world when it moves, so it
+wants a world that is bigger than the screen. That is a bigger change
+than it looks.
 
 ## Sprint 12 — packaging
 

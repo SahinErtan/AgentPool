@@ -69,7 +69,13 @@ export type ServerFrame =
       agents: AgentView[];
       scene_payload?: unknown;
     }
-  | { type: 'agent_upsert'; ts?: number; agents: AgentView[] }
+  | {
+      type: 'agent_upsert';
+      ts?: number;
+      agents: AgentView[];
+      /** The scene description, which changes when the pool grows. */
+      scene_payload?: unknown;
+    }
   | { type: 'agent_remove'; ts?: number; agent_id: string }
   | { type: 'session_event'; ts?: number; event: SessionEventView }
   | { type: 'scene'; ts?: number; scene: string; payload: unknown }

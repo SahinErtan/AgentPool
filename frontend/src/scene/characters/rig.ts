@@ -11,6 +11,7 @@ import type { CharacterSpec } from './spec';
 import {
   buildSkeleton,
   drawBook,
+  drawCards,
   drawEyes,
   drawFloatie,
   drawFoot,
@@ -21,6 +22,7 @@ import {
   drawHead,
   drawLimb,
   drawMouth,
+  drawNewspaper,
   drawPhone,
   drawSnack,
   drawSnorkel,
@@ -197,6 +199,8 @@ export interface PropSet {
   book: Graphics;
   phone: Graphics;
   snack: Graphics;
+  newspaper: Graphics;
+  cards: Graphics;
 }
 
 export function buildProps(spec: CharacterSpec, sk: Skeleton): PropSet {
@@ -205,5 +209,7 @@ export function buildProps(spec: CharacterSpec, sk: Skeleton): PropSet {
     book: drawBook(spec, sk),
     phone: drawPhone(spec, sk),
     snack: drawSnack(spec, sk),
+    newspaper: drawNewspaper(spec, sk),
+    cards: drawCards(spec, sk),
   };
 }

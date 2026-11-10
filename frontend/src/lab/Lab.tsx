@@ -25,6 +25,9 @@ const ACTIVITY_ORDER: IdleActivity[] = [
   'stretch',
   'snack',
   'chat',
+  'newspaper',
+  'cards',
+  'call',
 ];
 
 const UNIT = 190; // pixels per character height
@@ -114,10 +117,15 @@ export function Lab() {
         });
 
         const loungers: CharacterAnimator[] = [];
+        // The activities are laid out in rows, so that a long list still
+        // fits on the screen.
+        const PER_ROW = 4;
+        const COLUMN = 300;
+        const ROW = 220;
         ACTIVITY_ORDER.forEach((activity, i) => {
           const spec = specFor(`lab-act-${activity}`, 'subagent', { idleActivity: activity });
           const rig = buildRig(spec);
-          rig.root.position.set(140 + i * 210, 430);
+          rig.root.position.set(150 + (i % PER_ROW) * COLUMN, 430 + Math.floor(i / PER_ROW) * ROW);
           rig.root.scale.set(UNIT * spec.height);
           scene.addChild(rig.root);
           const animator = new CharacterAnimator(rig);
@@ -129,7 +137,7 @@ export function Lab() {
             text: activity,
             style: { fontFamily: 'monospace', fontSize: 14, fill: 0x3a2f22 },
           });
-          label.position.set(140 + i * 210 - 30, 442);
+          label.position.set(150 + (i % PER_ROW) * COLUMN - 30, 442 + Math.floor(i / PER_ROW) * ROW);
           scene.addChild(label);
         });
 
@@ -144,10 +152,11 @@ export function Lab() {
           { kind: 'wave', state: 'resting' },
           { kind: 'look', state: 'swimming' },
         ];
+        const REACTION_ROW = 430 + Math.ceil(ACTIVITY_ORDER.length / PER_ROW) * ROW + 60;
         REACTIONS.forEach((item, i) => {
           const spec = specFor(`lab-react-${item.kind}-${item.state}`, 'subagent');
           const rig = buildRig(spec);
-          rig.root.position.set(170 + i * 280, 660);
+          rig.root.position.set(170 + i * 280, REACTION_ROW);
           rig.root.scale.set(UNIT * spec.height);
           scene.addChild(rig.root);
           const animator = new CharacterAnimator(rig);
@@ -160,7 +169,7 @@ export function Lab() {
             text: `${item.kind} / ${item.state}`,
             style: { fontFamily: 'monospace', fontSize: 14, fill: 0x3a2f22 },
           });
-          label.position.set(170 + i * 280 - 40, 672);
+          label.position.set(170 + i * 280 - 40, REACTION_ROW + 12);
           scene.addChild(label);
         });
 

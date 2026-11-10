@@ -756,10 +756,13 @@ export class PoolScene {
         character.effectTimer = 0;
         const head = character.rig.headPivot.getGlobalPosition();
         this.sleepZ.emit(head.x, head.y - this.layout.characterHeight * 0.2);
-      } else if (activity === 'chat' && character.effectTimer > 2.2) {
+      } else if ((activity === 'chat' || activity === 'call') && character.effectTimer > 2.2) {
         character.effectTimer = 0;
         const head = character.rig.headPivot.getGlobalPosition();
-        const lines = ['…', 'really?', 'ship it', 'one more test', 'ok, done'];
+        const lines =
+          activity === 'call'
+            ? ['yes?', 'I will', 'hold on', 'can you hear me?', 'bye']
+            : ['…', 'really?', 'ship it', 'one more test', 'ok, done'];
         const message = lines[Math.floor(character.effectSeed * lines.length) % lines.length];
         this.bubble.show(
           head.x,

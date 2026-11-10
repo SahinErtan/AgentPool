@@ -504,6 +504,41 @@ export function activityPose(
       out.headYaw = 0.25;
       break;
     }
+    case 'newspaper': {
+      // Both hands hold the paper; every now and then a page is turned.
+      const turn = pulse(u, 0.45, 0.75);
+      out.armL = 0.34 - 1.5;
+      out.armR = -0.3 - 1.5;
+      out.elbowL = 0.5 + 1.15;
+      out.elbowR = 0.46 + 1.15;
+      out.headPitch = -0.22 - 0.42;
+      out.headYaw = 0.04 * Math.sin(u * TAU * 2);
+      out.bob = 0.006 * turn;
+      break;
+    }
+    case 'cards': {
+      // The cards are dealt out one by one.
+      const deal = pulse(u, 0.2, 0.55);
+      const hand = pulse(u, 0.6, 0.9);
+      out.armL = 0.34 - 1.1 * hand;
+      out.elbowL = 0.5 + 0.9 * hand;
+      out.armR = -0.3 - 1.2 - 0.4 * deal;
+      out.elbowR = 0.46 + 1.0 + 0.3 * deal;
+      out.headPitch = -0.22 - 0.3;
+      out.headYaw = -0.18;
+      break;
+    }
+    case 'call': {
+      // The phone is at the ear and the other hand talks.
+      const gesture = Math.sin(u * TAU * 2.5);
+      out.armR = -0.3 - 2.35;
+      out.elbowR = 0.46 + 1.85;
+      out.armL = 0.34 + 0.25 * gesture;
+      out.elbowL = 0.5 + 0.35;
+      out.headPitch = -0.22 - 0.12;
+      out.headYaw = 0.12 + 0.06 * gesture;
+      break;
+    }
     case 'none':
     default:
       break;

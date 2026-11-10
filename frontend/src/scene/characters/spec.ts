@@ -20,7 +20,10 @@ export type IdleActivity =
   | 'nap'
   | 'stretch'
   | 'snack'
-  | 'chat';
+  | 'chat'
+  | 'newspaper'
+  | 'cards'
+  | 'call';
 export type Archetype = 'bean' | 'pear' | 'tall' | 'squat' | 'round';
 export type Role = 'session' | 'subagent' | 'mcp' | 'workflow';
 
@@ -200,6 +203,9 @@ const ACTIVITY_TABLE: Record<IdleActivity, number> = {
   stretch: 9,
   snack: 9,
   chat: 7,
+  newspaper: 11,
+  cards: 8,
+  call: 10,
 };
 
 /** Build the full specification of a character from its agent id. */

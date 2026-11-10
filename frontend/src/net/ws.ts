@@ -56,6 +56,11 @@ export function connectAgentSocket(): AgentSocket {
         store.replaceAgents(frame.agents ?? []);
         break;
       case 'agent_upsert':
+        // The scene description comes with the agents: the pool may have
+        // grown or shrunk.
+        if (frame.scene_payload !== undefined) {
+          store.setScenePayload((frame.scene_payload as Record<string, unknown>) ?? null);
+        }
         store.upsertAgents(frame.agents ?? []);
         break;
       case 'agent_remove':

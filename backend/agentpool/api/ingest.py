@@ -87,7 +87,15 @@ async def _dispatch(registry, broker, scene, item: AgentEvent, changed) -> None:
         upserts.append(payload)
 
     if upserts:
-        broker.publish({"type": "agent_upsert", "agents": upserts})
+        # The scene description travels with the agents: the pool may have
+        # grown, and the frontend has to know.
+        broker.publish(
+            {
+                "type": "agent_upsert",
+                "agents": upserts,
+                "scene_payload": scene.describe(),
+            }
+        )
 
 
 def _session_dict(event: SessionEvent) -> Dict[str, Any]:

@@ -61,22 +61,23 @@ def test_a_working_agent_swims_in_a_lane() -> None:
 
 
 def test_the_pool_fills_up_and_the_rest_waits_at_the_edge() -> None:
+    """The pool grows, but not for ever: past twelve, the rest waits."""
     scene = PoolScene()
-    agents = fill(scene, 12)
+    agents = fill(scene, 16)
 
     modes = [scene.presentation(agent)["mode"] for agent in agents]
-    assert modes.count("lounge") == 6
-    assert modes.count("waiting") == 6
+    assert modes.count("lounge") == 12
+    assert modes.count("waiting") == 4
 
 
 def test_the_agent_at_the_gate_gets_the_first_free_lounger() -> None:
     """The queue works: nobody is left without a place for ever."""
     scene = PoolScene()
-    agents = fill(scene, 11)
+    agents = fill(scene, 17)
 
-    # Six on a lounger, four at the edge, one at the gate.
+    # Twelve on a lounger, four at the edge, one at the gate.
     modes = [scene.presentation(agent)["mode"] for agent in agents]
-    assert modes.count("lounge") == 6
+    assert modes.count("lounge") == 12
     assert modes.count("waiting") == 5
 
     at_the_gate = [agent for agent in agents if agent.id in scene._overflow]
@@ -119,3 +120,54 @@ def test_the_edge_goes_before_the_gate() -> None:
     asyncio.run(scene.on_agent_removed(seated[0].id))
 
     assert scene.presentation(at_the_edge[0])["mode"] == "lounge"
+
+
+def test_the_pool_grows_with_the_crowd() -> None:
+    """More agents, more loungers: the pool gets bigger."""
+    scene = PoolScene()
+    assert scene.describe()["loungers"] == 6
+
+    fill(scene, 9)
+
+    assert scene.describe()["loungers"] == 9
+
+
+def test_the_pool_keeps_at_least_six_loungers() -> None:
+    scene = PoolScene()
+    fill(scene, 3)
+    assert scene.describe()["loungers"] == 6
+
+
+def test_the_pool_never_grows_past_twelve_loungers() -> None:
+    scene = PoolScene()
+    fill(scene, 20)
+    assert scene.describe()["loungers"] == 12
+
+
+def test_the_pool_shrinks_again_when_the_crowd_leaves() -> None:
+    scene = PoolScene()
+    agents = fill(scene, 9)
+    assert scene.describe()["loungers"] == 9
+
+    for agent in agents[:4]:
+        asyncio.run(scene.on_agent_removed(agent.id))
+
+    assert scene.describe()["loungers"] == 6
+
+
+def test_an_agent_whose_lounger_disappears_goes_to_the_edge() -> None:
+    """The agent that loses its lounger is not left standing on nothing."""
+    scene = PoolScene()
+    agents = fill(scene, 9)
+    assert scene.describe()["loungers"] == 9
+
+    for agent in agents[:4]:
+        asyncio.run(scene.on_agent_removed(agent.id))
+
+    # Somebody is now waiting at the edge of the pool.
+    waiting = [
+        scene.presentation(agent)["mode"]
+        for agent in agents
+        if scene.presentation(agent)["mode"] == "waiting"
+    ]
+    assert waiting, "nobody was sent to the edge"

@@ -69,7 +69,7 @@ test('the characters are snapshots, not just equal to each other', () => {
   assert.equal(spec.seed, 2132370805);
   assert.equal(spec.archetype, 'bean');
   assert.equal(spec.swimStyle, 'doggy');
-  assert.equal(spec.idleActivity, 'phone');
+  assert.equal(spec.idleActivity, 'nap');
   assert.equal(spec.skin, '#3a2317');
   assert.equal(spec.hair, '#6b3f22');
   assert.equal(spec.suit, '#bc78cd');
