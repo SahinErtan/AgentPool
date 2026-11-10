@@ -3,12 +3,13 @@ PYENV_VERSION := 3.11.11
 VENV        := $(HOME)/.pyenv/versions/3.11.11/envs/agentpool-env
 PORT        := 38000
 
-.PHONY: help venv install dev server frontend build test test-backend test-frontend lab clean plugin plugin-uninstall
+.PHONY: help venv install dev server server-stop frontend build test test-backend test-frontend lab clean plugin plugin-uninstall
 
 help:
 	@echo "make venv      - create the python 3.11 environment"
 	@echo "make install   - venv + frontend dependencies + the frontend build"
 	@echo "make server    - run the backend on :$(PORT)"
+	@echo "make server-stop - stop the backend that is holding :$(PORT)"
 	@echo "make frontend  - run the vite dev server on :5173"
 	@echo "make build     - build the frontend into frontend/dist"
 	@echo "make test      - run the backend and the frontend test suites"
@@ -27,8 +28,31 @@ install: venv
 	cd frontend && npm install --ignore-scripts
 	$(MAKE) build
 
+# The plugin starts the backend by itself, so the port is often already
+# taken. Saying so is friendlier than letting the socket fail.
 server:
+	@if curl -s -m 1 http://127.0.0.1:$(PORT)/api/health >/dev/null 2>&1; then \
+		echo "AgentPool is already running on http://127.0.0.1:$(PORT)."; \
+		echo "The dashboard is there. Stop that one first with: make server-stop"; \
+		exit 1; \
+	fi
 	$(VENV)/bin/python backend/run.py
+
+# The backend that is holding the port, whoever started it.
+server-stop:
+	@pid=$$(ss -ltnp 2>/dev/null | grep ':$(PORT) ' | grep -o 'pid=[0-9]*' | head -n1 | cut -d= -f2); \
+	if [ -z "$$pid" ]; then \
+		echo "nothing is listening on :$(PORT)"; \
+		exit 0; \
+	fi; \
+	echo "stopping the AgentPool backend (pid $$pid)"; \
+	kill "$$pid" 2>/dev/null || true; \
+	for i in 1 2 3 4 5 6 7 8 9 10; do \
+		kill -0 "$$pid" 2>/dev/null || break; \
+		sleep 0.3; \
+	done; \
+	if kill -0 "$$pid" 2>/dev/null; then kill -9 "$$pid" 2>/dev/null || true; fi; \
+	echo "the port is free again"
 
 frontend:
 	cd frontend && npm run dev
