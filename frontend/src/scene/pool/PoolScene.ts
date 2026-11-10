@@ -29,7 +29,8 @@ import { Ambience } from './ambience';
 import { prefersReducedMotion } from '../motion';
 import { SleepZ, SpeechBubble, Steam } from '../characters/effects';
 import { characterBox, hitTest, type HitBox, type Pose } from './hittest';
-import { hourOfDay, mixColour, paletteFor, type Palette } from './daylight';
+import { hourOfDay, mixColour, paletteFor, applyWeather, type Palette } from './daylight';
+import { rainAmount, weatherFor, type Weather } from './weather';
 import {
   drawDeck,
   drawFloor,
@@ -139,6 +140,10 @@ export class PoolScene {
   private palette: Palette;
   /** The hour the palette was last built for, in quarters of an hour. */
   private paletteStep = -1;
+  /** What the weather is doing. */
+  private weather: Weather = 'clear';
+  /** How much rain is falling, from 0 to 1. */
+  private rain = 0;
   private time = 0;
   private lastDt = 0;
   /** The agent the pointer is over, if any. */
@@ -154,8 +159,12 @@ export class PoolScene {
 
   constructor(app: Application) {
     this.app = app;
-    this.palette = paletteFor(hourOfDay(new Date()));
-    this.paletteStep = this.paletteStepFor(new Date());
+    const now = new Date();
+    const clock = now.getTime() / 1000;
+    this.weather = weatherFor(clock);
+    this.rain = rainAmount(clock);
+    this.palette = applyWeather(paletteFor(hourOfDay(now)), this.weather);
+    this.paletteStep = this.paletteStepFor(now);
     // The sky reaches past the pool, so the background behind it follows
     // the time of day as well.
     this.app.renderer.background.color = this.palette.skyTop;
@@ -672,12 +681,16 @@ export class PoolScene {
       this.resize(this.app.renderer.width, this.app.renderer.height);
     }
 
-    // The light of the day: the colours follow the clock.
+    // The light of the day and the weather on top of it. The layers are
+    // rebuilt when either of them changes.
     const now = new Date();
+    const clock = now.getTime() / 1000;
+    const weather = weatherFor(clock);
     const step = this.paletteStepFor(now);
-    if (step !== this.paletteStep) {
+    if (step !== this.paletteStep || weather !== this.weather) {
       this.paletteStep = step;
-      this.palette = paletteFor(hourOfDay(now));
+      this.weather = weather;
+      this.palette = applyWeather(paletteFor(hourOfDay(now)), weather);
       // The sky reaches past the pool, so the background behind it has to
       // follow the time of day as well.
       this.app.renderer.background.color = this.palette.skyTop;
@@ -686,6 +699,7 @@ export class PoolScene {
       // The characters are in the same light as the pool.
       for (const character of this.characters.values()) this.applyLight(character);
     }
+    this.rain = rainAmount(clock);
 
     for (const character of this.characters.values()) {
       this.updateState(character, dt);
@@ -762,7 +776,7 @@ export class PoolScene {
     // characters keep moving: that is what the pool is for.
     const reduced = prefersReducedMotion();
     if (!reduced) {
-      this.ambience.update(dt, this.palette.light);
+      this.ambience.update(dt, this.palette.light, this.rain);
     }
 
     // The caustics drift.

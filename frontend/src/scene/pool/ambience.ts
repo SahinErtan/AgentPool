@@ -38,6 +38,17 @@ interface Bird {
   phase: number;
 }
 
+/** One drop of rain. */
+interface Drop {
+  x: number;
+  y: number;
+  speed: number;
+  length: number;
+}
+
+/** How many drops of rain are in the air at most. */
+const MAX_DROPS = 70;
+
 export class Ambience {
   readonly container = new Container();
   private sky = new Graphics();
@@ -47,6 +58,10 @@ export class Ambience {
   private petalPool: Petal[] = [];
   private ripplePool: Ripple[] = [];
   private bird: Bird = { alive: false, x: 0, y: 0, speed: 0, phase: 0 };
+  /** The rain in the air. */
+  private drops: Drop[] = [];
+  /** How much rain is falling, from 0 to 1. */
+  private rain = 0;
 
   private layout!: PoolLayout;
   private time = 0;
@@ -93,9 +108,10 @@ export class Ambience {
    * daylight, the petals stop falling in the evening, and the glint on
    * the water becomes the moonlight.
    */
-  update(dt: number, light = 1): void {
+  update(dt: number, light = 1, rain = 0): void {
     this.time += dt;
     this.light = light;
+    this.rain = rain;
     const layout = this.layout;
 
     // --- the bird -------------------------------------------------
@@ -162,7 +178,45 @@ export class Ambience {
       }
     }
 
+    // --- the rain ---------------------------------------------------
+    // The drops are kept in a pool: they fall, they hit the water, and
+    // they are put back at the top.
+    const wanted = Math.floor(this.rain * MAX_DROPS);
+    while (this.drops.length < wanted) {
+      this.drops.push({
+        x: Math.random() * (layout.width + 120) - 60,
+        y: Math.random() * layout.deckY,
+        speed: 520 + Math.random() * 260,
+        length: 8 + Math.random() * 8,
+      });
+    }
+    while (this.drops.length > wanted) this.drops.pop();
+
+    for (const drop of this.drops) {
+      drop.y += drop.speed * dt;
+      drop.x += drop.speed * dt * 0.22; // the wind
+      if (drop.y > layout.surfaceY) {
+        // It hit the water: a ripple, and the drop starts again.
+        this.spawnRipple(drop.x, layout.surfaceY + Math.random() * 30);
+        drop.y = -20;
+        drop.x = Math.random() * (layout.width + 120) - 60;
+      }
+      if (drop.x > layout.width + 60) drop.x -= layout.width + 120;
+    }
+
     this.draw();
+  }
+
+  /** A ring on the water where a drop landed. */
+  private spawnRipple(x: number, y: number): void {
+    const ripple = this.ripplePool.find((item) => !item.alive);
+    if (!ripple) return;
+    ripple.alive = true;
+    ripple.x = x;
+    ripple.y = y;
+    ripple.life = 0;
+    ripple.maxLife = 1.1;
+    ripple.size = 2;
   }
 
   private draw(): void {
@@ -177,6 +231,14 @@ export class Ambience {
         .quadraticCurveTo(this.bird.x - 2, this.bird.y + 2, this.bird.x, this.bird.y)
         .quadraticCurveTo(this.bird.x + 2, this.bird.y + 2, this.bird.x + 7, this.bird.y - flap)
         .stroke({ width: 2, color: 0x2c3e50, alpha: 0.75, cap: 'round' });
+    }
+
+    // The rain: slanted lines over the whole scene.
+    for (const drop of this.drops) {
+      this.sky
+        .moveTo(drop.x, drop.y)
+        .lineTo(drop.x - drop.length * 0.22, drop.y - drop.length)
+        .stroke({ width: 1, color: 0xdceaf5, alpha: 0.42 });
     }
 
     // The petals.

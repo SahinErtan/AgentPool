@@ -47,7 +47,7 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
     alpha: 0.18 * palette.light,
   });
 
-  // The stars come out with the dark.
+  // The stars come out with the dark. They are behind the clouds.
   if (palette.stars) {
     for (let i = 0; i < 60; i += 1) {
       // A fixed pattern: the same star every evening.
@@ -55,6 +55,25 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
       const y = ((i * 104729) % Math.max(1, layout.deckY * 0.7));
       const size = 1 + ((i * 31) % 2);
       g.circle(x, y, size).fill({ color: 0xffffff, alpha: 0.35 + ((i * 17) % 40) / 100 });
+    }
+  }
+
+  // The clouds. They are drawn in the sky, over the gradient.
+  if (palette.clouds > 0.01) {
+    for (let i = 0; i < 6; i += 1) {
+      const x = ((i * 613) % Math.max(1, layout.width - 160)) + 80;
+      const y = 26 + ((i * 149) % Math.max(1, layout.deckY * 0.5));
+      const w = 60 + ((i * 37) % 70);
+      const h = 10 + ((i * 13) % 12);
+      // A cloud is a few overlapping ellipses, so it has no hard edge.
+      for (let k = 0; k < 4; k += 1) {
+        const cx = x + (k - 1.5) * w * 0.28;
+        const cy = y + ((k % 2) - 0.5) * h * 0.7;
+        g.ellipse(cx, cy, w * (0.34 - k * 0.03), h * (0.8 + (k % 2) * 0.6)).fill({
+          color: k % 2 === 0 ? 0xe8eef4 : 0xd3dce5,
+          alpha: 0.17 * palette.clouds,
+        });
+      }
     }
   }
 

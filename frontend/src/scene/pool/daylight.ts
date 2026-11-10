@@ -10,6 +10,8 @@
  * be checked without a browser.
  */
 
+import type { Weather } from './weather';
+
 /** The colours of the pool at one moment. */
 export interface Palette {
   skyTop: number;
@@ -29,6 +31,8 @@ export interface Palette {
   lamps: boolean;
   /** Whether the stars are out. */
   stars: boolean;
+  /** How much cloud there is: 0 is a clear sky, 1 is overcast. */
+  clouds: number;
 }
 
 const NIGHT: Palette = {
@@ -45,6 +49,7 @@ const NIGHT: Palette = {
   light: 0.2,
   lamps: true,
   stars: true,
+  clouds: 0,
 };
 
 const DAWN: Palette = {
@@ -61,6 +66,7 @@ const DAWN: Palette = {
   light: 0.62,
   lamps: true,
   stars: false,
+  clouds: 0,
 };
 
 const MORNING: Palette = {
@@ -77,6 +83,7 @@ const MORNING: Palette = {
   light: 1,
   lamps: false,
   stars: false,
+  clouds: 0,
 };
 
 const NOON: Palette = {
@@ -93,6 +100,7 @@ const NOON: Palette = {
   light: 1,
   lamps: false,
   stars: false,
+  clouds: 0,
 };
 
 const AFTERNOON: Palette = {
@@ -109,6 +117,7 @@ const AFTERNOON: Palette = {
   light: 0.92,
   lamps: false,
   stars: false,
+  clouds: 0,
 };
 
 const DUSK: Palette = {
@@ -125,6 +134,7 @@ const DUSK: Palette = {
   light: 0.45,
   lamps: true,
   stars: false,
+  clouds: 0,
 };
 
 /** The keyframes over the day, in order. */
@@ -171,6 +181,7 @@ function mixPalette(a: Palette, b: Palette, t: number): Palette {
     // dark and go off when it gets light.
     lamps: t < 0.5 ? a.lamps : b.lamps,
     stars: t < 0.5 ? a.stars : b.stars,
+    clouds: a.clouds + (b.clouds - a.clouds) * t,
   };
 }
 
@@ -202,4 +213,29 @@ export function paletteFor(hour: number): Palette {
 /** The hour of the day, with the minutes as a fraction. */
 export function hourOfDay(date: Date): number {
   return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+}
+
+/**
+ * The palette with the weather on top of it.
+ *
+ * The clouds take the colour out of the sky and the light out of the
+ * pool. The rain is darker than the clouds.
+ */
+export function applyWeather(palette: Palette, weather: Weather): Palette {
+  if (weather === 'clear') return { ...palette, clouds: 0 };
+
+  const overcast = weather === 'cloudy' ? 0.55 : 1;
+  const grey = weather === 'cloudy' ? 0xa9b5c0 : 0x76818e;
+
+  return {
+    ...palette,
+    skyTop: mixColour(palette.skyTop, grey, overcast * 0.6),
+    skyBottom: mixColour(palette.skyBottom, grey, overcast * 0.45),
+    water: mixColour(palette.water, grey, overcast * 0.3),
+    // The deck is wet when it rains.
+    deck: mixColour(palette.deck, grey, overcast * 0.18),
+    deckShade: mixColour(palette.deckShade, grey, overcast * 0.18),
+    light: palette.light * (1 - overcast * 0.3),
+    clouds: overcast,
+  };
 }
