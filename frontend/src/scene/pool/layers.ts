@@ -36,13 +36,18 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
   for (let i = 0; i < strips; i += 1) {
     const t = i / (strips - 1);
     g.rect(
-      0,
-      (layout.deckY * i) / strips,
-      layout.width,
-      layout.deckY / strips + 1,
+      layout.worldLeft,
+      layout.worldTop + ((layout.deckY - layout.worldTop) * i) / strips,
+      layout.worldWidth,
+      (layout.deckY - layout.worldTop) / strips + 1,
     ).fill(mixColour(palette.skyTop, palette.skyBottom, t));
   }
-  g.rect(0, layout.deckY * 0.55, layout.width, layout.deckY * 0.45).fill({
+  g.rect(
+    layout.worldLeft,
+    layout.deckY * 0.55,
+    layout.worldWidth,
+    layout.deckY * 0.45,
+  ).fill({
     color: 0xffffff,
     alpha: 0.18 * palette.light,
   });
@@ -51,8 +56,8 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
   if (palette.stars) {
     for (let i = 0; i < 60; i += 1) {
       // A fixed pattern: the same star every evening.
-      const x = ((i * 7919) % layout.width);
-      const y = ((i * 104729) % Math.max(1, layout.deckY * 0.7));
+      const x = layout.worldLeft + ((i * 7919) % layout.worldWidth);
+      const y = layout.worldTop + ((i * 104729) % Math.max(1, layout.deckY * 0.7));
       const size = 1 + ((i * 31) % 2);
       g.circle(x, y, size).fill({ color: 0xffffff, alpha: 0.35 + ((i * 17) % 40) / 100 });
     }
@@ -61,8 +66,8 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
   // The clouds. They are drawn in the sky, over the gradient.
   if (palette.clouds > 0.01) {
     for (let i = 0; i < 6; i += 1) {
-      const x = ((i * 613) % Math.max(1, layout.width - 160)) + 80;
-      const y = 26 + ((i * 149) % Math.max(1, layout.deckY * 0.5));
+      const x = layout.worldLeft + ((i * 613) % Math.max(1, layout.worldWidth - 160)) + 80;
+      const y = layout.worldTop + 40 + ((i * 149) % Math.max(1, layout.deckY * 0.5));
       const w = 60 + ((i * 37) % 70);
       const h = 10 + ((i * 13) % 12);
       // A cloud is a few overlapping ellipses, so it has no hard edge.
@@ -79,7 +84,7 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
 
   // A distant treeline, so the sky has a horizon.
   const treeBase = layout.deckY;
-  for (let x = -20; x < layout.width + 20; x += 46) {
+  for (let x = layout.worldLeft - 20; x < layout.worldLeft + layout.worldWidth + 20; x += 46) {
     const height = 26 + ((x * 7919) % 23);
     g.circle(x, treeBase - height * 0.35, height * 0.75).fill({ color: palette.tree, alpha: 0.55 });
     g.rect(x - 2, treeBase - height * 0.3, 4, height * 0.3).fill({
@@ -90,11 +95,17 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
 }
 
 export function drawDeck(g: Graphics, layout: PoolLayout, palette: Palette): void {
-  // The walkway the characters cross.
-  g.rect(0, layout.deck.y, layout.width, layout.deck.h).fill(palette.deck);
-  g.rect(0, layout.deck.y + layout.deck.h - 6, layout.width, 6).fill(palette.deckShade);
+  // The walkway the characters cross. It carries on past the edges of the
+  // canvas, so the camera can move without showing the end of the world.
+  g.rect(layout.worldLeft, layout.deck.y, layout.worldWidth, layout.deck.h).fill(palette.deck);
+  g.rect(
+    layout.worldLeft,
+    layout.deck.y + layout.deck.h - 6,
+    layout.worldWidth,
+    6,
+  ).fill(palette.deckShade);
   // Tiles.
-  for (let x = 0; x < layout.width; x += 42) {
+  for (let x = layout.worldLeft; x < layout.worldLeft + layout.worldWidth; x += 42) {
     g.rect(x, layout.deck.y, 2, layout.deck.h).fill({ color: 0x000000, alpha: 0.05 });
   }
 

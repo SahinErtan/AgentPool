@@ -20,6 +20,18 @@ export interface Rect {
 export interface PoolLayout {
   width: number;
   height: number;
+  /**
+   * The world is wider than the screen.
+   *
+   * The terrace and the sky carry on past the edges of the canvas, so the
+   * camera can move without ever showing the end of the world. The pool
+   * itself does not grow: it ends at the gate and at the ladder.
+   */
+  margin: number;
+  worldLeft: number;
+  worldWidth: number;
+  /** The top of the sky, above the screen. */
+  worldTop: number;
   /** The line the characters stand on. */
   deckY: number;
   /** The band the characters walk through. */
@@ -157,6 +169,10 @@ export function computeLayout(
   return {
     width: w,
     height: h,
+    margin: Math.round(w * 0.15),
+    worldLeft: -Math.round(w * 0.15),
+    worldWidth: w + Math.round(w * 0.3),
+    worldTop: -Math.round(h * 0.15),
     deckY,
     deck: { x: 0, y: deckY - deckHeight, w, h: deckHeight + terrace },
     water,
@@ -169,6 +185,25 @@ export function computeLayout(
     characterHeight,
     scale: characterHeight,
   };
+}
+
+/**
+ * Where the camera looks, in world coordinates.
+ *
+ * The camera may not leave the world: the terrace and the sky carry on
+ * past the edges of the canvas, so the camera can move without ever
+ * showing the end of the world.
+ */
+export function cameraLeftFor(
+  layout: PoolLayout,
+  focus: number,
+  zoom: number,
+): number {
+  const visible = layout.width / Math.max(0.01, zoom);
+  const wanted = focus - visible / 2;
+  const lowest = layout.worldLeft;
+  const highest = layout.worldLeft + layout.worldWidth - visible;
+  return Math.max(lowest, Math.min(highest, wanted));
 }
 
 /** The pixel position of a semantic waypoint. */

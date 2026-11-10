@@ -14,11 +14,13 @@
 import { Application, Container, Graphics, Point, Text, TilingSprite } from 'pixi.js';
 import { CharacterAnimator, type CharState } from '../characters/animator';
 import { buildRig, type Rig } from '../characters/rig';
+import { damp } from '../characters/math';
 import { specFor, type CharacterSpec, type Role } from '../characters/spec';
 import type { AgentView } from '../../net/types';
 import { acknowledgeExit } from '../../net/ws';
 import { store } from '../../state/store';
 import {
+  cameraLeftFor,
   computeLayout,
   LOUNGER_COUNT,
   resolveWaypoint,
@@ -42,6 +44,10 @@ import {
 
 const WALK_SPEED = 165; // pixels per second
 const CLIMB_DURATION = 1.2; // seconds
+/** How much the camera zooms in on the character that is picked. */
+const CAMERA_ZOOM = 1.1;
+/** How fast the camera moves, in the units of the damping. */
+const CAMERA_SPEED = 3.4;
 
 /** The pose of a character decides the shape of its hit area. */
 function poseFor(state: CharState): Pose {
@@ -144,6 +150,10 @@ export class PoolScene {
   private weather: Weather = 'clear';
   /** How much rain is falling, from 0 to 1. */
   private rain = 0;
+  /** The left edge of the view, in world coordinates. */
+  private cameraLeft = 0;
+  /** How much the camera zooms in. */
+  private cameraZoom = 1;
   private time = 0;
   private lastDt = 0;
   /** The agent the pointer is over, if any. */
@@ -801,6 +811,9 @@ export class PoolScene {
     this.foam.clear();
     drawFoam(this.foam, this.layout, reduced ? 0 : this.time);
 
+    // The camera follows the character that is picked.
+    this.updateCamera(dt);
+
     if (this.debugText) {
       this.debugText.text = [
         `fps ${Math.round(this.app.ticker.FPS)}  canvas ${this.layout.width}x${this.layout.height} loungers=${this.layout.loungers.length} waiting=${this.layout.waiting.length} deckY=${this.layout.deckY} surfaceY=${this.layout.surfaceY} dt=${this.lastDt} time=${this.time.toFixed(2)}`,
@@ -1039,6 +1052,37 @@ export class PoolScene {
       );
     }
     return hitTest(boxes, x, y);
+  }
+
+  // -- the camera ---------------------------------------------------
+
+  /**
+   * Move the camera.
+   *
+   * The camera rests in the middle of the pool and looks at whoever is
+   * picked: it pans over and zooms in a little. The world is wider than
+   * the screen, so the camera can move without showing the end of it, and
+   * the bottom of the world stays where it is, so the floor of the pool
+   * does not move.
+   */
+  private updateCamera(dt: number): void {
+    const layout = this.layout;
+    const selected = store.get().selectedId;
+    const character = selected ? this.characters.get(selected) : null;
+
+    const focus = character ? character.x : layout.width / 2;
+    const zoom = character ? CAMERA_ZOOM : 1;
+
+    this.cameraZoom = damp(this.cameraZoom, zoom, CAMERA_SPEED, dt * 1000);
+
+    const target = cameraLeftFor(layout, focus, this.cameraZoom);
+    this.cameraLeft = damp(this.cameraLeft, target, CAMERA_SPEED, dt * 1000);
+
+    this.world.scale.set(this.cameraZoom);
+    this.world.position.set(
+      -this.cameraLeft * this.cameraZoom,
+      layout.height * (1 - this.cameraZoom),
+    );
   }
 
   // -- layout -------------------------------------------------------

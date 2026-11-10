@@ -96,7 +96,7 @@ was used. The inspector shows them instead of the session's own feed.
 of the backend and reports the working ones, what they are doing and what
 looks off.
 
-## Sprint 11 — the pool (mostly done)
+## Sprint 11 — the pool (done)
 
 Things that make it a nicer place.
 
@@ -126,13 +126,16 @@ The pool has a minimum of six loungers and grows to twelve when it is
 busy, and it shrinks again when the agents leave. The scene description
 travels with the agents, so the frontend knows.
 
-### The camera — not done
+### The camera — done
 
-A slow pan along the deck, or a zoom towards the character you clicked.
-It is the one item of Sprint 11 that is left. A camera on a pool that
-fills the whole screen shows the edges of the world when it moves, so it
-wants a world that is bigger than the screen. That is a bigger change
-than it looks.
+The camera looks at whoever is picked: it pans over and zooms in a little,
+and it goes back when the selection is dropped.
+
+A camera needs a world that is bigger than the screen, so the terrace and
+the sky carry on past the edges of the canvas. The pool itself does not
+grow: it still ends at the gate and at the ladder. The bottom of the world
+stays where it is, so the floor of the pool does not move when the camera
+zooms.
 
 ## Sprint 12 — packaging
 

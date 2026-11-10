@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { computeLayout, resolveWaypoint } from '../src/scene/pool/layout';
+import { cameraLeftFor, computeLayout, resolveWaypoint } from '../src/scene/pool/layout';
 
 const SIZES: [number, number][] = [
   [320, 240],
@@ -130,4 +130,40 @@ test('the pool can have more loungers than it started with', () => {
       assert.ok(slot.x >= 0 && slot.x + slot.w <= layout.width, 'a lounger is off the canvas');
     }
   }
+});
+
+test('the world is wider than the screen, so the camera can move', () => {
+  const layout = computeLayout(1200, 727);
+  assert.ok(layout.margin > 0, 'the world has no margin');
+  assert.ok(layout.worldLeft < 0, 'the world does not reach past the left edge');
+  assert.ok(
+    layout.worldLeft + layout.worldWidth > layout.width,
+    'the world does not reach past the right edge',
+  );
+});
+
+test('the camera stays inside the world', () => {
+  const layout = computeLayout(1200, 727);
+  // The camera looks at a character that is far to the left.
+  const left = cameraLeftFor(layout, 0, 1.1);
+  assert.ok(left >= layout.worldLeft, 'the camera left the world');
+  // And at one that is far to the right.
+  const right = cameraLeftFor(layout, layout.width, 1.1);
+  assert.ok(
+    right + layout.width / 1.1 <= layout.worldLeft + layout.worldWidth + 0.001,
+    'the camera left the world',
+  );
+});
+
+test('the camera centres what it looks at', () => {
+  const layout = computeLayout(1200, 727);
+  const middle = layout.width / 2;
+  const left = cameraLeftFor(layout, middle, 1);
+  assert.ok(Math.abs(left + middle - layout.width / 2) < 0.001);
+});
+
+test('the camera rests where it was', () => {
+  // With nothing picked, the view is the screen.
+  const layout = computeLayout(1200, 727);
+  assert.equal(cameraLeftFor(layout, layout.width / 2, 1), 0);
 });

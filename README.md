@@ -28,7 +28,8 @@ clock, the lamps come on when the sun goes down, and sometimes it rains.
 - A filter for the list, and a bar under every agent that shows when it was
   working in the last fifteen minutes.
 - The pool itself: the agents swim, they lie on the loungers with a cup of
-  tea or a newspaper, and when one of them finishes the others wave.
+  tea or a newspaper, and when one of them finishes the others wave. The
+  camera looks at the agent you pick.
 
 Inside Claude Code, `/agentpool` asks the pool what the agents are doing and
 reports it back.
