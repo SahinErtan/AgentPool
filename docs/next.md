@@ -8,6 +8,11 @@ that were promised, then the things that make it useful at scale, then the
 things that make it beautiful.** Everything in the project is in English; the
 conversation about it is not.
 
+The sprints 9, 10 and 11 are done. What follows is what a careful reading of
+the code turned up afterwards — two of the items are measured bugs, not
+opinions, and the measurements are written down below so they can be checked
+again.
+
 ## The order at a glance
 
 | # | What | Why here | Size |
@@ -26,8 +31,11 @@ conversation about it is not.
 | 12 | The camera, a pool that grows | Polish; nice, not needed | medium |
 | 13 | Licence, GitHub, CI, release | Only worth it when there is something to share | medium |
 
-Items 1–3 are done — they were Sprint 9. Items 4–8 are done — they were
-Sprint 10, the dashboard. Items 9–12 are the pool. Item 13 is packaging.
+Items 1–3 were Sprint 9. Items 4–8 were Sprint 10, the dashboard. Items 9–12
+are the pool, Sprint 11. Item 13 is the packaging.
+
+The three sprints below come **before** the packaging, because they are about
+correctness. The packaging is last, as it always was.
 
 ---
 
@@ -137,7 +145,163 @@ grow: it still ends at the gate and at the ladder. The bottom of the world
 stays where it is, so the floor of the pool does not move when the camera
 zooms.
 
-## Sprint 12 — packaging (parked)
+## Sprint 12 — the pool that keeps up
+
+**The scene and the registry must agree with reality.** The two of them are
+told different stories by different code paths, and where they disagree the
+pool keeps a body that is not there any more.
+
+### 13. The sweeper never tells the scene that an agent is gone — measured
+
+`app.py` broadcasts `agent_remove` for the agents the sweeper dropped, but
+it never calls `scene.on_agent_removed(id)`. The browser forgets the
+character; the backend keeps its lane, its lounger and its entry in
+`_known`.
+
+The measurement — three swimmers, the sweeper runs, the browser is told
+that all three are gone:
+
+```
+lanes while swimming : {0: 'sub:s0', 1: 'sub:s1', 2: 'sub:s2'}
+removals to browser  : ['sub:s0', 'sub:s1', 'sub:s2']
+scene lanes after    : {0: 'sub:s0', 1: 'sub:s1', 2: 'sub:s2'}   <-- ghost lanes
+```
+
+There are four lanes. Four exits and the pool is full of ghosts: every new
+swimmer is put in a lane that somebody else is already in, and they swim
+through each other. The same holds for the loungers, the waiting slots and
+the queue at the gate.
+
+### 14. The reconciler never tells the scene that an agent finished — measured
+
+The reconciler has three branches: an agent the scene has not seen is
+replayed, a working one is told to start, an idle one is told to finish. A
+**finished** agent matches none of them, so `on_agent_finished` never runs
+and the lane is never given back. The same for a leaving one.
+
+```
+lanes while swimming : {0: 'sub:abc'}
+FINISHED -> NO BRANCH TAKES IT  (the scene never hears)
+lanes after the finish: {0: 'sub:abc'}
+```
+
+This is the safety net failing exactly where it is needed: the `SubagentStop`
+hook did not arrive, the file on disk says the agent is done, and the pool
+keeps swimming for it for ever.
+
+### 15. A finished agent needs a browser to be reaped
+
+`acknowledge_exit` is called by the frontend, when the character walks out of
+the gate. With no dashboard open, nothing calls it: the finished agents pile
+up in the registry and stay in `/api/state`. The backend must not need a
+browser to tidy up after itself.
+
+### 16. The scene must not grow for ever
+
+`_known` only ever grows, and the registry has no cap. An agent that has
+left is remembered for the life of the process. The scene must forget, and
+the registry must have a ceiling.
+
+### 17. The journal is written and never read
+
+The journal collects every event, and the only way to read it is `cat`. It
+should be readable through the API — `/api/history` — and the state should
+survive a restart: at boot the journal is replayed into the registry, so the
+"finished in the last five minutes" counters and the history of the agents
+are still there after the backend is stopped and started.
+
+### 18. One delivery, one effect
+
+The ingest endpoint applies every event it is given. A hook that is
+retried — the network hiccups, the client gives up and sends it again — is
+applied twice, and the event count grows by two. The events carry an id;
+they should be remembered and skipped the second time.
+
+## Sprint 13 — the pool you can reach and script
+
+### 19. The dashboard must survive a lost connection
+
+The client opens one WebSocket and does nothing else. There is no
+reconnect, no backoff, and no fallback: if the socket is blocked by a proxy
+or the backend is restarted, the dashboard is dead until the page is
+reloaded. It should reconnect with a backoff and fall back to polling
+`/api/state` while the socket is down.
+
+### 20. One slow tab must not stall the others
+
+The broadcast awaits `send_json` for each client in turn. A tab that has
+stopped reading holds the whole pool up. Every client should have its own
+queue, and a queue that is too long should drop the oldest state rather
+than grow.
+
+### 21. Nothing may fail silently
+
+The broker counts the events it drops and nobody can read the number. The
+loops swallow every exception with a log line, so a reconciler that broke
+an hour ago looks exactly like one that is working. The counters belong on
+`/api/health` — or a `/api/metrics` — and the last error belongs in the
+panel.
+
+### 22. The local port must not be open to the room
+
+`POST /hooks/{event}` takes any JSON body from any process on the machine,
+and `AGENTPOOL_HOST` can be set to `0.0.0.0`, which publishes the whole
+dashboard to the network. The port should stay on `127.0.0.1` by default,
+a shared token should be required, and a host that is not local should say
+so loudly.
+
+### 23. All the tools, not only the Agent tool
+
+`hooks.json` limits `PreToolUse` and `PostToolUse` to the `Agent` tool, so
+the inspector's list of recent tool calls only ever shows the subagent
+spawns. The normalizer already understands every tool; the matcher is the
+only thing in the way.
+
+### 24. A command line
+
+The only way to ask AgentPool something from outside is `curl /api/state`
+inside a slash command. An `agentpool` command with `--json`, `--watch`,
+`--agent <id>` and a useful exit code would make it scriptable — and it is
+the same code the `/agentpool` command uses, so there is one answer, not
+two.
+
+### 25. Telling the user that something finished
+
+Nothing tells you that an agent finished while you were looking at
+something else. The backend should be able to send a desktop notification
+when a long agent is done, and the plugin should be able to say so in the
+session.
+
+### 26. A link to an agent
+
+The selection lives in the browser's memory, so an agent cannot be linked,
+bookmarked or sent to somebody else. `?agent=<id>` would do it.
+
+## Sprint 14 — the pool that is fast and reachable
+
+### 27. The keyboard and the screen reader
+
+The agent rows are click-only `<li>` elements with no role, no tab index
+and no key handler; the inspector neither takes nor gives back the focus;
+`styles.css` has no focus style at all, and the canvas has no alternative
+for somebody who cannot use a mouse.
+
+### 28. The hot path
+
+`clearanceAhead` is O(n) for every character in every frame, which is O(n²)
+for the pool. `pickAt` builds a fresh array of hit boxes on every mouse
+move. Every character allocates a new pose object every frame, and the foam
+is cleared and drawn again every frame. With a dozen agents this is nothing;
+with sixty it is not.
+
+### 29. The tests for the code that has none
+
+The parts with no tests are the parts that break: the WebSocket client
+(reconnect, backoff, the stall timer), the 1100-line `PoolScene`, the
+ingest endpoint, the state endpoints and the store. A registry-and-scene
+test would have caught the ghost lanes on the first day.
+
+## Sprint 15 — packaging (parked)
 
 The project is finished and works, so this is a deliberate later step. The
 user decided on 2026-11-10 to hold off until they push the project to
@@ -153,9 +317,8 @@ unprompted.
 
 The click first, because the plan promised it and it is the thing a person
 tries first. The journal second, because it is the only part of the project
-that gets worse the longer it runs, and the fix is twenty lines. The rest of
-the small fixes third, because they are each smaller than the effort of
-deciding whether to do them. All three are done.
+that gets worse the longer it runs, and the fix is twenty lines. All three
+are done.
 
 The dashboard before the pool, because a dashboard that is useful with twenty
 agents in it is worth more than a tenth idle activity. The reactions before
@@ -163,12 +326,17 @@ the day and night, because they are the thing that makes the pool feel like
 something is happening there; the weather is a mood, the reactions are a
 story.
 
-The packaging last, because a licence on a repository nobody can open yet is
-a chore.
+Then the correctness work, because a pool that keeps bodies that are not
+there any more gets worse the longer the session runs — the same argument
+as the journal. The transport and the port after that, because they decide
+whether the dashboard is there at all. The keyboard and the hot path last
+of the three, because they matter when the pool is busy.
+
+The packaging still comes last, because a licence on a repository nobody can
+open yet is a chore.
 
 ## What comes next
 
-Nothing but the packaging, and that waits for the day the project is pushed
-to GitHub. The rest — the click, the journal, the build, the dashboard, the
-reactions, the light of the day, the weather, the activities, the camera —
-is done.
+Sprint 12, the pool that keeps up — starting with the two ghost-lane bugs,
+because both of them were measured and both of them make the pool wrong
+rather than merely ugly.
