@@ -29,6 +29,23 @@ log = logging.getLogger("agentpool")
 RECONCILE_INTERVAL_S = 30.0
 
 
+def split_swept(registry, changed):
+    """Tell the agents that changed from the agents that are gone.
+
+    The sweeper drops the agents whose time is up. Sending them to the
+    browser as an update would put them back, so they are sent as a
+    removal instead.
+    """
+    upserts = []
+    removals = []
+    for state in changed:
+        if registry.get(state.id) is None:
+            removals.append(state.id)
+        else:
+            upserts.append(state)
+    return upserts, removals
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or Settings.from_env()
 
@@ -53,18 +70,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await asyncio.sleep(10)
             try:
                 changed = registry.sweep()
-                if changed:
+                if not changed:
+                    continue
+                # The agents that are gone have to be told that they are
+                # gone: sending them as an update would put them back.
+                upserts, removals = split_swept(registry, changed)
+                if upserts:
                     await hub.broadcast(
-                        {
-                            "type": "agent_upsert",
-                            "agents": [
-                                dict(
-                                    hub.agent_view(state),
-                                )
-                                for state in changed
-                            ],
-                        }
+                        {"type": "agent_upsert", "agents": [hub.agent_view(s) for s in upserts]}
                     )
+                if removals:
+                    await hub.broadcast({"type": "agent_remove", "agent_ids": removals})
             except Exception:
                 log.exception("sweeper failed")
 

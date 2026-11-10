@@ -64,7 +64,10 @@ export function connectAgentSocket(): AgentSocket {
         store.upsertAgents(frame.agents ?? []);
         break;
       case 'agent_remove':
-        store.removeAgent(frame.agent_id);
+        // The backend removes one agent at a time, or a whole list of
+        // them when the sweeper has expired some.
+        if (frame.agent_id) store.removeAgent(frame.agent_id);
+        for (const agentId of frame.agent_ids ?? []) store.removeAgent(agentId);
         break;
       case 'session_event':
         store.pushFeed(frame.event);

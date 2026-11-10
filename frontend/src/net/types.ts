@@ -76,7 +76,7 @@ export type ServerFrame =
       /** The scene description, which changes when the pool grows. */
       scene_payload?: unknown;
     }
-  | { type: 'agent_remove'; ts?: number; agent_id: string }
+  | { type: 'agent_remove'; ts?: number; agent_id?: string; agent_ids?: string[] }
   | { type: 'session_event'; ts?: number; event: SessionEventView }
   | { type: 'scene'; ts?: number; scene: string; payload: unknown }
   | { type: 'pong'; ts: number };

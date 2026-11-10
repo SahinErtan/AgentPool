@@ -259,11 +259,13 @@ class AgentRegistry:
         """Drop an agent that has walked out of the scene.
 
         Only an agent that is on its way out may be dropped: a character
-        that waits at the gate is still part of the scene.
+        that waits at the gate is still part of the scene. An agent that
+        has finished counts as on its way out — its character climbs out
+        of the water and leaves through the gate like everybody else.
         """
         state = self._agents.get(agent_id)
         if state is None:
             return False
-        if state.status is not AgentStatus.LEAVING:
+        if state.status not in (AgentStatus.LEAVING, AgentStatus.FINISHED):
             return False
         return self._agents.pop(agent_id, None) is not None

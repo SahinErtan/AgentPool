@@ -224,3 +224,52 @@ def test_the_agent_carries_its_last_events_to_the_browser():
     assert len(payload["events"]) == 2
     assert payload["events"][-1]["tool"] == "Read"
     assert payload["events"][-1]["detail"] == "Read"
+
+
+def test_a_finished_agent_can_walk_out_of_the_scene():
+    """A finished subagent climbs out and leaves like everybody else."""
+    registry = make_registry()
+    spawn(registry)
+    registry.apply(
+        AgentEvent.new(
+            type="finished",
+            agent_id="sub:a1",
+            kind=AgentKind.SUBAGENT,
+            session_id="s1",
+            parent_id="session:s1",
+            status=AgentStatus.FINISHED,
+            label="Explore",
+        )
+    )
+    assert registry.get("sub:a1").status is AgentStatus.FINISHED
+
+    assert registry.acknowledge_exit("sub:a1") is True
+    assert registry.get("sub:a1") is None
+
+
+def test_an_agent_that_is_still_in_the_pool_cannot_walk_out():
+    """A character that waits at the gate is still part of the scene."""
+    registry = make_registry()
+    spawn(registry, status=AgentStatus.IDLE)
+
+    assert registry.acknowledge_exit("sub:a1") is False
+    assert registry.get("sub:a1") is not None
+
+
+def test_a_leaving_agent_can_walk_out_of_the_scene():
+    registry = make_registry()
+    spawn(registry)
+    registry.apply(
+        AgentEvent.new(
+            type="removed",
+            agent_id="sub:a1",
+            kind=AgentKind.SUBAGENT,
+            session_id="s1",
+            parent_id="session:s1",
+            status=AgentStatus.REMOVED,
+            label="Explore",
+        )
+    )
+
+    assert registry.acknowledge_exit("sub:a1") is True
+    assert registry.get("sub:a1") is None
