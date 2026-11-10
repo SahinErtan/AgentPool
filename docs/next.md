@@ -137,7 +137,12 @@ grow: it still ends at the gate and at the ladder. The bottom of the world
 stays where it is, so the floor of the pool does not move when the camera
 zooms.
 
-## Sprint 12 — packaging
+## Sprint 12 — packaging (parked)
+
+The project is finished and works, so this is a deliberate later step. The
+user decided on 2026-11-10 to hold off until they push the project to
+GitHub, and to be reminded of this list at that point. Do not start it
+unprompted.
 
 - A licence and a README that explains the whole thing to a stranger.
 - A GitHub repository, with the tests running on every push.
@@ -163,7 +168,7 @@ a chore.
 
 ## What comes next
 
-The pool: the reactions first — when a subagent finishes, the others look
-up — and then the day and night. The pool is the part that is already
-pleasant to look at, so it can wait; the panel is now useful with twenty
-agents in it.
+Nothing but the packaging, and that waits for the day the project is pushed
+to GitHub. The rest — the click, the journal, the build, the dashboard, the
+reactions, the light of the day, the weather, the activities, the camera —
+is done.
