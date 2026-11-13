@@ -405,14 +405,16 @@ open yet is a chore.
 
 ## What comes next
 
-The packaging, and whatever the observer of the dashboard found. The
-three correctness sprints are done: the pool keeps up with reality, it
-can be reached and scripted, and it is fast and reachable with the
-keyboard.
+The packaging, and whatever the observer of the dashboard found in its
+last round.
 
-The observer that watched the dashboard while the work was being done
-found the two bugs that the tests did not: the characters stood at the
-gate and never moved, because they were all born on the same spot and
-each of them told the other to stand still; and the swimmers were drawn
-three hundred pixels above the water, because the height a swimmer swims
-at was worked out once and never again.
+Sprint 12, 13, 14 and 15 are done: the pool keeps up with reality, it
+can be reached and scripted, it is fast and reachable with the keyboard,
+and it has a history to look back at.
+
+The observer that watched the dashboard through all of it found the two
+bugs that the tests did not: the characters stood at the gate and never
+moved, because they were all born on the same spot and each of them told
+the other to stand still; and the swimmers were drawn three hundred
+pixels above the water, because the height a swimmer swims at was worked
+out once and never again. Every round after that it found less.
