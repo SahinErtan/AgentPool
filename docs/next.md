@@ -513,6 +513,12 @@ open yet is a chore.
 The packaging, and whatever the observer of the dashboard found in its
 last round.
 
+The pool shows now: the journal is the archive and the disk is the truth
+about what is running. A boot replays a quarter of an hour of the journal,
+not a week of it, and an agent the disk does not know about walks out
+through the gate. Measured on the same state: 30 characters before, 3
+after.
+
 Sprint 12, 13, 14 and 15 are done: the pool keeps up with reality, it
 can be reached and scripted, it is fast and reachable with the keyboard,
 and it has a history to look back at.
