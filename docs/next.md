@@ -380,7 +380,6 @@ pool is ground and not a hole.
 What is left:
 
 ### 34. The standing character is a stack of blocks
-
 Every part of a character has its own outline, and the parts are joined
 only by overlapping. At the size the characters are drawn on the deck,
 the outlines read as gaps, and the figure looks like a broken mannequin
@@ -402,7 +401,6 @@ characters of their id, would tell them apart when the description does
 not.
 
 ### 37. Two swimmers in one lane while the others stand empty — done
-
 Found while reading the live pool: two agents were swimming in `lane:0`
 and the other three lanes stood empty. The lane kept the *name* of one
 swimmer, so a swimmer that shared a lane was never counted, and the lane
@@ -432,7 +430,51 @@ the agent left the pool in the backend, but the browser was never told.
 **How:** the dispatcher gets the settings it needs, and the announcement
 is wrapped so that a courtesy can never break the event that carries it.
 
-## Sprint 17 — packaging (parked)
+## Sprint 17 — the pool that shows now
+
+The question behind it: **why are there so many characters on the screen,
+and who are they?** The answer, measured on the live pool: they are not
+yours.
+
+```
+boot:  replayed 372 agents from the journal
+pool:  30 characters — 2 working, 28 idle
+       the oldest idle one: 432 579 s old (five days)
+       19 of them were workflows of other sessions on this machine
+       8 of them were your own subagents, days old
+places: 12 loungers, 1 at the edge, 15 standing at the gate
+```
+
+Two different bugs, one cause each.
+
+### 39. The journal replay is a museum — done
+
+The journal is kept for a week, and at boot every event of the week is
+replayed into the registry. The agents whose last event was a *start* —
+the ones that never sent a stop — come back as working, and the sweeper
+turns them into idle. They then lie on a lounger for ever, because
+nothing ever finishes them.
+
+**How:** the replay at boot only covers the last quarter of an hour
+(`AGENTPOOL_JOURNAL_REPLAY_WINDOW_S`, 900 seconds by default). The whole
+journal stays where it belongs: `/api/history`, which the Activity panel
+reads. The registry is for now, not for the archive.
+
+### 40. An agent whose source is gone stays in the pool — done
+
+The reconciler merges what the disk has into the registry, and it never
+takes anything out. A background task of another session that has been
+running for a day is over, but it is still in the pool, on a lounger, for
+ever. The disk is the truth about what is running; the reconciler has to
+obey it in both directions.
+
+**How:** the reconciler knows what the disk has — the live sessions, the
+subagents and the background tasks. An agent of those kinds that the disk
+does not know about has gone, and it walks out through the gate. The rule
+does not fire when the disk could not be read: a `claude agents` that
+fails to answer means nothing, not "there are no agents".
+
+## Sprint 18 — packaging (parked)
 
 The project is finished and works, so this is a deliberate later step. The
 user decided on 2026-11-10 to hold off until they push the project to

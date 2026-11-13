@@ -158,7 +158,7 @@ def reconcile(
         )
 
     if use_cli:
-        for item in read_agents_cli():
+        for item in read_agents_cli() or []:
             if item.get("kind") != "background":
                 continue
             task_id = item.get("id") or item.get("sessionId")
@@ -188,4 +188,118 @@ def reconcile(
                 now,
             )
 
+    return changed
+
+
+# -- what is gone ----------------------------------------------------
+
+
+def known_ids(
+    claude_dir: Path,
+    *,
+    use_cli: bool = True,
+    now: Optional[float] = None,
+) -> Optional[set[str]]:
+    """The agents the disk knows about, by id.
+
+    ``None`` means the disk could not be read for the background tasks: the
+    caller must not conclude that every workflow is gone.
+    """
+    now = time.time() if now is None else now
+    known: set[str] = set()
+
+    sessions = read_sessions(claude_dir)
+    for session in sessions:
+        known.add(f"session:{session['session_id']}")
+    live_sessions = {session["session_id"] for session in sessions}
+
+    for subagent in read_subagents(claude_dir):
+        if subagent.get("finished"):
+            # A subagent that is done is history: it belongs in the journal,
+            # not in the pool.
+            continue
+        belongs_to_live_session = subagent.get("session_id") in live_sessions
+        touched_recently = (now - float(subagent.get("modified") or 0)) < 7200
+        if belongs_to_live_session or touched_recently:
+            known.add(f"sub:{subagent['agent_id']}")
+
+    if use_cli:
+        items = read_agents_cli()
+        if items is None:
+            return None
+        for item in items:
+            if item.get("kind") != "background":
+                continue
+            task_id = item.get("id") or item.get("sessionId")
+            if task_id:
+                known.add(f"wf:{task_id}")
+
+    return known
+
+
+def gone_agents(
+    registry: AgentRegistry,
+    claude_dir: Path,
+    *,
+    use_cli: bool = True,
+    now: Optional[float] = None,
+) -> List[str]:
+    """The agents that are not on the disk any more.
+
+    The reconciler merges what the disk has into the registry. It has to
+    take out what the disk does not have as well: a background task of
+    another session that has been over for a day is still in the pool
+    otherwise, lying on a lounger for ever.
+
+    An agent that is on its way out is left alone: the sweeper collects it.
+    An MCP server is left alone too: there is no file on the disk that says
+    whether it is still there.
+    """
+    known = known_ids(claude_dir, use_cli=use_cli, now=now)
+    if known is None:
+        # The disk could not be read: nothing is known, so nothing goes.
+        return []
+
+    gone: List[str] = []
+    for state in registry.snapshot():
+        if state.kind is AgentKind.MCP:
+            continue
+        if state.status in (
+            AgentStatus.FINISHED,
+            AgentStatus.LEAVING,
+            AgentStatus.REMOVED,
+        ):
+            continue
+        if state.id in known:
+            continue
+        gone.append(state.id)
+    return gone
+
+
+def mark_gone(registry: AgentRegistry, agent_ids: List[str]) -> List[AgentState]:
+    """Tell the registry that these agents have left.
+
+    The agent goes to the gate and waits there until the scene says its
+    character has walked out, or until the grace period is over.
+    """
+    changed: List[AgentState] = []
+    for agent_id in agent_ids:
+        state = registry.get(agent_id)
+        if state is None:
+            continue
+        changed.extend(
+            registry.apply(
+                AgentEvent.new(
+                    type="removed",
+                    agent_id=state.id,
+                    kind=state.kind,
+                    session_id=state.session_id,
+                    parent_id=state.parent_id,
+                    status=AgentStatus.LEAVING,
+                    label=state.label,
+                    detail=state.detail,
+                    source="reconcile",
+                )
+            )
+        )
     return changed

@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from agentpool.bridge.events import AgentEvent, AgentKind, AgentStatus
-from agentpool.bridge.reconcile import reconcile
+from agentpool.bridge.reconcile import gone_agents, mark_gone, reconcile
 from agentpool.bridge.registry import AgentRegistry
 
 
@@ -179,3 +179,118 @@ def test_a_newer_file_does_correct_the_state(tmp_path: Path) -> None:
     state = registry.get("session:s1")
     assert state is not None
     assert state.status is AgentStatus.IDLE
+
+
+def test_an_agent_the_disk_does_not_know_is_gone(tmp_path: Path) -> None:
+    """The disk is the truth in both directions.
+
+    Measured on the live pool: a background task of another session that
+    had been over for a day was still in the pool, on a lounger, for ever.
+    The reconciler merged what the disk had and never took anything out.
+    """
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="wf:old",
+            kind=AgentKind.WORKFLOW,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.WORKING,
+            label="shell",
+            source="hook",
+        )
+    )
+
+    gone = gone_agents(registry, tmp_path, use_cli=False)
+
+    assert gone == ["wf:old"]
+
+
+def test_an_agent_the_disk_knows_stays(tmp_path: Path) -> None:
+    write_session(tmp_path, "s1", "busy", time.time())
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="session:s1",
+            kind=AgentKind.SESSION,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.WORKING,
+            label="main",
+            source="hook",
+        )
+    )
+
+    assert gone_agents(registry, tmp_path, use_cli=False) == []
+
+
+def test_a_finished_agent_is_left_to_the_sweeper(tmp_path: Path) -> None:
+    """An agent on its way out is not the reconciler's business."""
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="finished",
+            agent_id="sub:done",
+            kind=AgentKind.SUBAGENT,
+            session_id="s1",
+            parent_id="session:s1",
+            status=AgentStatus.FINISHED,
+            label="Explore",
+            source="hook",
+        )
+    )
+
+    assert gone_agents(registry, tmp_path, use_cli=False) == []
+
+
+def test_a_cli_that_cannot_be_read_means_nothing(tmp_path: Path, monkeypatch) -> None:
+    """A CLI that fails is not an empty list.
+
+    The rule that takes the agents out must not fire when the disk could
+    not be read, or a hiccup of the CLI would empty the pool.
+    """
+    import agentpool.bridge.reconcile as reconcile_module
+
+    monkeypatch.setattr(reconcile_module, "read_agents_cli", lambda timeout=3.0: None)
+
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="wf:old",
+            kind=AgentKind.WORKFLOW,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.WORKING,
+            label="shell",
+            source="hook",
+        )
+    )
+
+    assert gone_agents(registry, tmp_path, use_cli=True) == []
+
+
+def test_the_agents_that_are_gone_walk_out_of_the_gate(tmp_path: Path) -> None:
+    """The scene has to hear about it, or the place is kept for ever."""
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="wf:old",
+            kind=AgentKind.WORKFLOW,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.WORKING,
+            label="shell",
+            source="hook",
+        )
+    )
+
+    changed = mark_gone(registry, gone_agents(registry, tmp_path, use_cli=False))
+
+    assert len(changed) == 1
+    state = registry.get("wf:old")
+    assert state is not None
+    assert state.status is AgentStatus.LEAVING

@@ -56,6 +56,9 @@ class Settings:
     token: str = ""
     #: Tell the user with a desktop notification when an agent finishes.
     notify: bool = True
+    #: How much of the journal is put back into the pool at boot. The
+    #: journal keeps a week; the pool is for now, not for the archive.
+    journal_replay_window_s: float = 900.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -82,4 +85,7 @@ class Settings:
             ),
             token=os.environ.get("AGENTPOOL_TOKEN", defaults.token).strip(),
             notify=_env_bool("AGENTPOOL_NOTIFY", defaults.notify),
+            journal_replay_window_s=_env_float(
+                "AGENTPOOL_JOURNAL_REPLAY_WINDOW_S", defaults.journal_replay_window_s
+            ),
         )

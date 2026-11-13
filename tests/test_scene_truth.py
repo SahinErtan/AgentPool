@@ -343,6 +343,52 @@ def test_the_scene_gives_the_place_back_when_the_browser_says_goodbye() -> None:
     asyncio.run(run())
 
 
+def _write_session(claude_dir, session_id: str, status: str = "busy") -> None:
+    """A session file on the disk, the way Claude Code writes it."""
+    import json
+    import time
+
+    directory = claude_dir / "sessions"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{session_id}.json").write_text(
+        json.dumps(
+            {
+                "sessionId": session_id,
+                "pid": 4242,
+                "cwd": "/tmp",
+                "name": "main",
+                "status": status,
+                "updatedAt": time.time() * 1000,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_subagent(claude_dir, session_id: str, agent_id: str) -> None:
+    """A subagent that is still running, as the disk describes it."""
+    import json
+    import os
+    import time
+
+    directory = claude_dir / "projects" / "tmp-project" / session_id / "subagents"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"agent-{agent_id}.meta.json"
+    path.write_text(
+        json.dumps(
+            {
+                "agentType": "Explore",
+                "description": "look around",
+                "toolUseId": "toolu_1",
+                "finished": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    now = time.time()
+    os.utime(path, (now, now))
+
+
 # -- the journal -----------------------------------------------------
 
 
@@ -365,9 +411,56 @@ def test_the_journal_is_replayed_on_boot(monkeypatch, tmp_path) -> None:
         def prune(self, now=None):
             return []
 
-        async def replay_into(self, registry):
+        async def replay_into(self, registry, since=None):
             played.append(registry)
             spawn(registry, "sub:j1")
+            return 1
+
+    monkeypatch.setattr(app_module, "Journal", StubJournal)
+    monkeypatch.setattr(app_module, "reconcile", lambda *args, **kwargs: [])
+
+    # The disk knows the agent: it is a subagent of a session that is still
+    # running. An agent the disk does not know has gone — see the next test.
+    claude_dir = tmp_path / "claude"
+    _write_session(claude_dir, "s1", "busy")
+    _write_subagent(claude_dir, "s1", "j1")
+
+    settings = Settings(
+        state_dir=tmp_path,
+        claude_dir=claude_dir,
+        journal_enabled=False,
+    )
+    application = app_module.create_app(settings)
+
+    with TestClient(application):
+        pass
+
+    assert played, "the journal was not replayed on boot"
+    assert application.state.scene.knows("sub:j1")
+
+
+def test_an_agent_the_disk_does_not_know_leaves_on_boot(monkeypatch, tmp_path) -> None:
+    """The pool is for now, not for the archive.
+
+    Measured on the live pool: the boot replayed 372 agents out of a week
+    of journal, and the ones whose last event was a start came back as
+    working. Nothing ever finished them, so they lay on a lounger for ever
+    — five-day-old characters in a pool of two.
+    """
+    from fastapi.testclient import TestClient
+
+    from agentpool import app as app_module
+    from agentpool.config import Settings
+
+    class StubJournal:
+        def __init__(self, *args, **kwargs) -> None:
+            self.path = tmp_path
+
+        def prune(self, now=None):
+            return []
+
+        async def replay_into(self, registry, since=None):
+            spawn(registry, "sub:old")
             return 1
 
     monkeypatch.setattr(app_module, "Journal", StubJournal)
@@ -383,8 +476,9 @@ def test_the_journal_is_replayed_on_boot(monkeypatch, tmp_path) -> None:
     with TestClient(application):
         pass
 
-    assert played, "the journal was not replayed on boot"
-    assert application.state.scene.knows("sub:j1")
+    assert not application.state.scene.knows("sub:old"), (
+        "an agent that is not on the disk is still in the pool"
+    )
 
 
 def test_the_replay_call_survives_a_broken_journal(monkeypatch, tmp_path) -> None:

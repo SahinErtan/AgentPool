@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 def _to_seconds(value: Any) -> float:
@@ -105,11 +105,17 @@ def read_subagents(claude_dir: Path) -> List[Dict[str, Any]]:
     return found
 
 
-def read_agents_cli(timeout: float = 3.0) -> List[Dict[str, Any]]:
+def read_agents_cli(timeout: float = 3.0) -> Optional[List[Dict[str, Any]]]:
     """``claude agents --json`` — the sanctioned machine interface.
 
     Only the background sessions show up here; the subagents a session spawns
     are not listed as separate rows.
+
+    ``None`` means the CLI could not be read, and that is not the same as an
+    empty list: an empty list says there are no background tasks, ``None``
+    says that nothing is known. The reconciler takes the agents the disk
+    does not know about out of the pool, and it must not do that when the
+    disk could not be read.
     """
     try:
         result = subprocess.run(
@@ -120,13 +126,13 @@ def read_agents_cli(timeout: float = 3.0) -> List[Dict[str, Any]]:
             check=False,
         )
     except Exception:
-        return []
+        return None
     if result.returncode != 0:
-        return []
+        return None
     try:
         data = json.loads(result.stdout or "[]")
     except Exception:
-        return []
+        return None
     if not isinstance(data, list):
-        return []
+        return None
     return [item for item in data if isinstance(item, dict)]

@@ -183,7 +183,7 @@ class Journal:
                     return out
         return out
 
-    async def replay_into(self, registry) -> int:
+    async def replay_into(self, registry, since: Optional[float] = None) -> int:
         """Read the journal back and restore the agents it describes.
 
         The events are applied in the order they were written, oldest
@@ -192,6 +192,12 @@ class Journal:
         journal and not the time of the boot: an agent that finished ten
         minutes ago must still look like it finished ten minutes ago.
 
+        ``since`` is the window: the events that are older than it are left
+        in the journal, where they belong, and are not put back into the
+        pool. The journal keeps a week, and a week of agents is a museum,
+        not a pool: the agents whose last event was a start come back as
+        working, and nothing ever finishes them.
+
         Returns how many agents were restored.
         """
         if not self.enabled:
@@ -199,6 +205,8 @@ class Journal:
 
         restored = set()
         for record in self._records_chronological():
+            if since is not None and float(record.get("ts") or 0.0) < since:
+                continue
             event = _agent_event(record)
             if event is None:
                 continue

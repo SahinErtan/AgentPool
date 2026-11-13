@@ -16,7 +16,7 @@ from .api.ingest import create_ingest_router
 from .api.state import create_metrics_router, create_state_router
 from .api.ws import WsHub, create_ws_router
 from .bridge.broker import Broker
-from .bridge.reconcile import reconcile
+from .bridge.reconcile import gone_agents, mark_gone, reconcile
 from .bridge.registry import AgentRegistry
 from .config import Settings
 from .metrics import Counters
@@ -168,6 +168,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 # it cannot grow into something nobody wants to keep.
                 journal.prune()
                 changed = reconcile(registry, settings.claude_dir)
+                # The disk is the truth in both directions: what it has is
+                # merged in, and what it does not have any more goes out.
+                changed.extend(
+                    mark_gone(registry, gone_agents(registry, settings.claude_dir))
+                )
                 if not changed:
                     continue
                 # The scene has to hear about every change: a finished
@@ -216,11 +221,26 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             if replay_into is None:
                 log.info("the journal cannot be replayed yet: the disk is the truth")
             else:
-                replayed = await replay_into(registry)
+                window = settings.journal_replay_window_s
+                replayed = await replay_into(
+                    registry, since=time.time() - window if window > 0 else None
+                )
                 if replayed:
-                    log.info("replayed %s agents from the journal", replayed)
+                    log.info(
+                        "replayed %s agents from the last %s seconds of the journal",
+                        replayed,
+                        window,
+                    )
         except Exception:
             log.exception("the journal could not be replayed")
+
+        # The agents the disk does not know about have gone. They walk out
+        # of the gate with everybody else.
+        try:
+            mark_gone(registry, gone_agents(registry, settings.claude_dir))
+        except Exception as error:
+            counters.fail_background(f"the gone agents could not be marked: {error}")
+            log.exception("the gone agents could not be marked")
 
         try:
             for state in registry.snapshot():
