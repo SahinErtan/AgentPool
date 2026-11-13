@@ -1,6 +1,8 @@
+import { useEffect, useRef, type KeyboardEvent } from 'react';
 import type { AgentView } from '../net/types';
 import { store, type Filter, type KindFilter, type StatusFilter } from '../state/store';
 import { useStore } from '../state/useStore';
+import { keyAction, nextSelection } from './keyboard';
 import { useTick } from './useTick';
 import { workingSpan } from './timeline';
 
@@ -51,15 +53,71 @@ function elapsed(from: number | null, now: number): string {
 }
 
 export function AgentList() {
-  const { agents, selectedId, hoveredId, filter } = useStore();
+  const {
+    agents,
+    selectedId,
+    hoveredId,
+    filter,
+    focusedId,
+    focusTarget,
+    focusNonce,
+  } = useStore();
   const now = useTick(1000);
   const list = [...agents.values()]
     .filter((agent) => matches(agent, filter))
     .sort((a, b) => a.id.localeCompare(b.id));
 
+  const ids = list.map((agent) => agent.id);
+  // The row that owns the Tab stop: the one the keyboard was on last, or
+  // the first row when that one is gone.
+  const cursorId = focusedId !== null && ids.includes(focusedId) ? focusedId : ids[0] ?? null;
+
+  const rows = useRef(new Map<string, HTMLLIElement>());
+
+  // The inspector gives the focus back when it closes.
+  useEffect(() => {
+    if (focusTarget !== 'list' || cursorId === null) return;
+    const row = rows.current.get(cursorId);
+    if (!row) return;
+    row.focus();
+    store.clearFocusTarget();
+  }, [focusTarget, focusNonce, cursorId]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    const action = keyAction(event.key);
+    if (action === 'none') return;
+    // The list is ours: the page must not scroll or move the focus away.
+    event.preventDefault();
+    event.stopPropagation();
+
+    const next = nextSelection(ids, cursorId, event.key);
+
+    if (action === 'move') {
+      if (next === null) return;
+      store.select(next);
+      // The focus stays in the list, so that the arrow keys keep working.
+      rows.current.get(next)?.focus();
+      return;
+    }
+
+    if (action === 'open') {
+      if (next === null) return;
+      store.select(next);
+      // Enter is the one key that puts the focus into the inspector: the
+      // arrow keys have to keep it in the list, or the list cannot be
+      // walked.
+      store.requestFocus('inspector');
+      return;
+    }
+
+    // Escape closes the inspector and hands the focus back to the row.
+    store.select(null);
+    store.requestFocus('list');
+  };
+
   return (
     <aside className="agent-list">
-      <h2>Agents</h2>
+      <h2 id="agent-list-heading">Agents</h2>
 
       <div className="filters">
         <div className="filters__chips">
@@ -97,12 +155,26 @@ export function AgentList() {
         </p>
       ) : null}
 
-      <ul>
+      <ul
+        role="listbox"
+        aria-labelledby="agent-list-heading"
+        onKeyDown={onKeyDown}
+      >
         {list.map((agent) => {
           const span = workingSpan(agent.started_at, agent.finished_at, now);
           return (
             <li
               key={agent.id}
+              role="option"
+              aria-selected={agent.id === selectedId}
+              aria-label={`${agent.label}, ${agent.status}`}
+              // Only the row the keyboard is on is in the Tab order: that is
+              // how a list is walked with the arrow keys.
+              tabIndex={agent.id === cursorId ? 0 : -1}
+              ref={(node) => {
+                if (node) rows.current.set(agent.id, node);
+                else rows.current.delete(agent.id);
+              }}
               className={[
                 'agent',
                 `agent--${agent.status}`,
@@ -111,10 +183,17 @@ export function AgentList() {
               ]
                 .filter(Boolean)
                 .join(' ')}
-              onClick={() => store.select(agent.id === selectedId ? null : agent.id)}
+              onClick={() => {
+                store.select(agent.id === selectedId ? null : agent.id);
+                // The row that was clicked is the row the keyboard is on.
+                store.setFocused(agent.id);
+                rows.current.get(agent.id)?.focus();
+              }}
             >
               <div className="agent__main">
-                <span className="agent__mark">{KIND_MARK[agent.kind] ?? '·'}</span>
+                <span className="agent__mark" aria-hidden="true">
+                  {KIND_MARK[agent.kind] ?? '·'}
+                </span>
                 <span className="agent__label">{agent.label}</span>
                 <span className="agent__time">
                   {elapsed(agent.started_at ?? agent.created_at, now)}

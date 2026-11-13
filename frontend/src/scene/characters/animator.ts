@@ -19,6 +19,7 @@ import {
   loungePose,
   reactionDelta,
   REACTION_DURATION_S,
+  resetPose,
   restPose,
   SWIM_STYLES,
   walkPose,
@@ -62,6 +63,12 @@ export class CharacterAnimator {
   private weights: Weights = { rest: 1, lounge: 0, activity: 0, walk: 0, swim: 0, climb: 0 };
   /** The damped lounge weight before the activity is taken out of it. */
   private loungeRaw = 0;
+  /**
+   * The blended pose.
+   *
+   * It is made once and then used again: the layers are blended into it
+   * every frame, so the frame does not allocate a pose of its own.
+   */
   private pose: Pose = zeroPose();
   private layerRest: Pose = zeroPose();
   private layerLounge: Pose = zeroPose();
@@ -134,7 +141,14 @@ export class CharacterAnimator {
     return this.reaction !== null;
   }
 
-  update(dtMs: number): void {
+  /**
+   * Bring the character one frame further.
+   *
+   * @param dtMs The time that passed, in milliseconds.
+   * @param time The clock of the scene, in seconds. The scene passes the
+   *   same one to every character, so the whole pool breathes together.
+   */
+  update(dtMs: number, time: number = performance.now() / 1000): void {
     const dt = dtMs / 1000;
     const w = this.weights;
 
@@ -174,7 +188,6 @@ export class CharacterAnimator {
     this.updateIdleActivity(dt);
 
     // --- build the layers ------------------------------------------
-    const time = performance.now() / 1000;
     restPose(this.layerRest, time);
     loungePose(this.layerLounge, time);
     walkPose(this.layerWalk, this.swimPhase);
@@ -191,7 +204,9 @@ export class CharacterAnimator {
     }
 
     // --- blend ------------------------------------------------------
-    this.pose = zeroPose();
+    // The pose is reused, so it is put back to zero first: nothing of the
+    // frame before may leak into this one.
+    resetPose(this.pose);
     blendPose(this.pose, this.layerRest, w.rest, this.layerLounge, w.lounge);
     blendPose(this.pose, this.pose, 1, this.layerActivity, w.activity);
     blendPose(this.pose, this.pose, 1, this.layerWalk, w.walk);

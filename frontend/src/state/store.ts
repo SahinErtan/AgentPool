@@ -5,7 +5,14 @@
  * the panels — the 60 fps path never touches React state.
  */
 
-import type { AgentStatus, AgentView, SessionEventView } from '../net/types';
+import type {
+  AgentStatus,
+  AgentView,
+  ConnectionState,
+  SessionEventView,
+} from '../net/types';
+
+export type { ConnectionState };
 
 export interface Toast {
   id: number;
@@ -29,14 +36,42 @@ export interface AgentMemory {
   lastEventAt: number;
 }
 
+/**
+ * How the dashboard is talking to the backend.
+ *
+ * `connecting` is the first attempt, `reconnecting` is a live socket that
+ * was lost and is being dialled again, `offline` is when the dashboard has
+ * given up and is polling instead.
+ */
+
 export interface StoreState {
   connected: boolean;
+  /** The finer state of the connection: the panel can say more than on/off. */
+  connection: ConnectionState;
   scene: string;
   /** The scene's own description: how many lanes, how many loungers. */
   scenePayload: Record<string, unknown> | null;
   agents: Map<string, AgentView>;
   feed: SessionEventView[];
   selectedId: string | null;
+  /**
+   * The row of the list that the keyboard is on.
+   *
+   * It is the row that owns the Tab stop, and the row the focus goes back
+   * to when the inspector closes. It survives the selection being cleared.
+   */
+  focusedId: string | null;
+  /**
+   * The agent a link points at, until it shows up in the pool.
+   *
+   * A deep link can arrive before the agent does, so the link waits here
+   * instead of being thrown away.
+   */
+  pendingAgentId: string | null;
+  /** Where the keyboard focus is asked to go: the list or the inspector. */
+  focusTarget: 'list' | 'inspector' | null;
+  /** Counts the focus requests, so the same target can be asked twice. */
+  focusNonce: number;
   /** The agent the pointer is over in the scene. */
   hoveredId: string | null;
   /** What the list shows. */
@@ -64,11 +99,16 @@ const MEMORY_TTL_MS = 10 * 60 * 1000;
 
 let state: StoreState = {
   connected: false,
+  connection: 'connecting',
   scene: 'pool',
   scenePayload: null,
   agents: new Map(),
   feed: [],
   selectedId: null,
+  focusedId: null,
+  pendingAgentId: pendingAgentFromUrl(),
+  focusTarget: null,
+  focusNonce: 0,
   hoveredId: null,
   filter: { status: 'all', kind: 'all' },
   memory: new Map(),
@@ -91,8 +131,13 @@ export const store = {
   },
 
   setConnected(connected: boolean) {
-    if (state.connected === connected) return;
-    state = { ...state, connected };
+    this.setConnection(connected ? 'live' : 'offline');
+  },
+
+  /** Say how the connection is doing, so the panel can tell the truth. */
+  setConnection(connection: ConnectionState) {
+    if (state.connection === connection) return;
+    state = { ...state, connection, connected: connection === 'live' };
     emit();
   },
 
@@ -149,8 +194,50 @@ export const store = {
   },
 
   select(agentId: string | null) {
-    if (state.selectedId === agentId) return;
-    state = { ...state, selectedId: agentId };
+    // The cursor follows the selection, but it stays where it is when the
+    // selection is cleared: the row is still there to go back to.
+    const focusedId = agentId ?? state.focusedId;
+    if (
+      state.selectedId === agentId &&
+      state.focusedId === focusedId &&
+      state.pendingAgentId === null
+    ) {
+      return;
+    }
+    state = {
+      ...state,
+      selectedId: agentId,
+      focusedId,
+      // A selection replaces the link that was waiting for an agent.
+      pendingAgentId: null,
+    };
+    emit();
+  },
+
+  /** Move the keyboard cursor to another row. */
+  setFocused(agentId: string | null) {
+    if (state.focusedId === agentId) return;
+    state = { ...state, focusedId: agentId };
+    emit();
+  },
+
+  /** Remember the agent a link points at, until it shows up in the pool. */
+  setPendingAgent(agentId: string | null) {
+    if (state.pendingAgentId === agentId) return;
+    state = { ...state, pendingAgentId: agentId };
+    emit();
+  },
+
+  /** Ask for the keyboard focus to move somewhere. */
+  requestFocus(target: 'list' | 'inspector') {
+    state = { ...state, focusTarget: target, focusNonce: state.focusNonce + 1 };
+    emit();
+  },
+
+  /** The focus request has been carried out. */
+  clearFocusTarget() {
+    if (state.focusTarget === null) return;
+    state = { ...state, focusTarget: null };
     emit();
   },
 
@@ -196,4 +283,44 @@ function remember(
     }
   }
   return next;
+}
+
+/**
+ * The deep link of an agent.
+ *
+ * The selection used to live only in the browser's memory, so an agent
+ * could not be linked to, bookmarked or sent to somebody else. The agent
+ * lives in the address bar instead, as `?agent=<id>`.
+ */
+
+/** The agent id in a query string, if there is one. */
+export function agentFromSearch(search: string): string | null {
+  const value = new URLSearchParams(search).get('agent');
+  return value ? value : null;
+}
+
+/**
+ * The agent a link points at, read when the panel starts.
+ *
+ * The link is read before the very first render, so that the address bar
+ * is not cleared before the agent it points at has had its chance to show
+ * up in the pool.
+ */
+function pendingAgentFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  return agentFromSearch(window.location.search);
+}
+
+/**
+ * The query string with the agent in it — or without it.
+ *
+ * The id is escaped on the way out, so an id with a colon in it survives
+ * the round trip through the address bar.
+ */
+export function searchWithAgent(search: string, agentId: string | null): string {
+  const params = new URLSearchParams(search);
+  if (agentId) params.set('agent', agentId);
+  else params.delete('agent');
+  const text = params.toString();
+  return text ? `?${text}` : '';
 }

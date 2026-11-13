@@ -188,6 +188,25 @@ export function computeLayout(
 }
 
 /**
+ * The height a swimmer floats at.
+ *
+ * Every swimmer is at the surface: the waterline cuts it lengthwise, so
+ * the head and the back stay above the water. The lane moves it up or
+ * down a little.
+ *
+ * The height comes from the layout and not from the character, so a pool
+ * that is resized takes its swimmers with it: a swimmer that kept the
+ * height of the old pool would float in the sky.
+ */
+export function swimYFor(layout: PoolLayout, laneOffset: number): number {
+  return (
+    layout.surfaceY -
+    layout.characterHeight * 0.06 +
+    laneOffset * layout.characterHeight * 0.16
+  );
+}
+
+/**
  * Where the camera looks, in world coordinates.
  *
  * The camera may not leave the world: the terrace and the sky carry on

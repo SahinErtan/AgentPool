@@ -2,6 +2,14 @@
 
 export type AgentKind = 'session' | 'subagent' | 'mcp' | 'workflow';
 
+/**
+ * How the dashboard is talking to the backend.
+ *
+ * The store keeps the same union next to its own state; it is repeated here
+ * so the net layer does not have to import the state layer to name a state.
+ */
+export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline';
+
 export type AgentStatus = 'idle' | 'working' | 'finished' | 'leaving' | 'removed';
 
 export type SceneMode =
@@ -76,7 +84,14 @@ export type ServerFrame =
       /** The scene description, which changes when the pool grows. */
       scene_payload?: unknown;
     }
-  | { type: 'agent_remove'; ts?: number; agent_id?: string; agent_ids?: string[] }
+  | {
+      type: 'agent_remove';
+      ts?: number;
+      agent_id?: string;
+      agent_ids?: string[];
+      /** The scene description, when the pool shrank with the agents. */
+      scene_payload?: Record<string, unknown>;
+    }
   | { type: 'session_event'; ts?: number; event: SessionEventView }
   | { type: 'scene'; ts?: number; scene: string; payload: unknown }
   | { type: 'pong'; ts: number };

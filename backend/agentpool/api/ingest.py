@@ -122,7 +122,7 @@ def create_ingest_router(
         if not auth.origin_is_allowed(origin):
             log.warning("refused a delivery from %s", origin)
             if counters is not None:
-                counters.refused(f"a delivery from {origin}")
+                counters.refuse(f"a delivery from {origin}")
             return {"ok": True, "accepted": 0, "duplicates": 0}
         if not auth.content_type_is_allowed(request.headers.get("content-type")):
             log.warning(
@@ -130,7 +130,7 @@ def create_ingest_router(
                 request.headers.get("content-type"),
             )
             if counters is not None:
-                counters.refused("a delivery with the wrong content type")
+                counters.refuse("a delivery with the wrong content type")
             return {"ok": True, "accepted": 0, "duplicates": 0}
 
         try:
@@ -173,7 +173,7 @@ def create_ingest_router(
             except Exception as error:
                 log.exception("failed to apply event")
                 if counters is not None:
-                    counters.failed(str(error))
+                    counters.fail(str(error))
 
         if counters is not None:
             counters.accepted_events(accepted)

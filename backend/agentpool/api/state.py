@@ -45,8 +45,14 @@ def create_state_router(
     @router.get("/api/state")
     async def state(request: Request) -> Dict[str, Any]:
         guard(request)
-        agents = [agent_view(item) for item in registry.snapshot()]
-        working = sum(1 for item in registry.snapshot() if item.status is AgentStatus.WORKING)
+        states = list(registry.snapshot())
+        agents = [agent_view(item) for item in states]
+        # Every status is counted on its own: an agent that has finished is
+        # neither working nor idle, and calling it idle is a lie that the
+        # panel would repeat.
+        working = sum(1 for item in states if item.status is AgentStatus.WORKING)
+        idle = sum(1 for item in states if item.status is AgentStatus.IDLE)
+        done = sum(1 for item in states if item.status is AgentStatus.FINISHED)
         return {
             "type": "snapshot",
             "scene": scene.scene_id,
@@ -55,7 +61,8 @@ def create_state_router(
             "counts": {
                 "total": len(agents),
                 "working": working,
-                "idle": len(agents) - working,
+                "idle": idle,
+                "done": done,
             },
             "scene_payload": scene.describe(),
         }

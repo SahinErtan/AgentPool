@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { AgentView } from '../net/types';
 import { store } from '../state/store';
 import { useStore } from '../state/useStore';
@@ -33,8 +34,26 @@ function Row({ label, value }: { label: string; value: string }) {
  * where the raw facts live: what the backend knows about the agent.
  */
 export function Inspector() {
-  const { agents, selectedId } = useStore();
+  const { agents, selectedId, focusTarget, focusNonce } = useStore();
   const agent = selectedId ? agents.get(selectedId) : null;
+  const section = useRef<HTMLElement>(null);
+
+  // The inspector takes the focus when it opens, so that the keyboard can
+  // walk through the details of the agent.
+  useEffect(() => {
+    if (focusTarget !== 'inspector') return;
+    const node = section.current;
+    if (!node) return;
+    node.focus();
+    store.clearFocusTarget();
+  }, [focusTarget, focusNonce, agent?.id]);
+
+  // Escape closes the inspector and hands the focus back to the row it
+  // came from.
+  const close = () => {
+    store.select(null);
+    store.requestFocus('list');
+  };
 
   if (!agent) {
     return (
@@ -47,13 +66,25 @@ export function Inspector() {
   const props = agent.presentation.props;
 
   return (
-    <section className="inspector">
+    <section
+      className="inspector"
+      ref={section}
+      tabIndex={-1}
+      role="region"
+      aria-label={`Details of ${agent.label}`}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }}
+    >
       <header className="inspector__header">
         <h2>{agent.label}</h2>
         <button
           type="button"
           className="inspector__close"
-          onClick={() => store.select(null)}
+          onClick={close}
           aria-label="Close the inspector"
         >
           ×

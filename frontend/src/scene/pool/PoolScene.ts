@@ -24,19 +24,27 @@ import {
   computeLayout,
   LOUNGER_COUNT,
   resolveWaypoint,
+  swimYFor,
   WAITING_COUNT,
   type PoolLayout,
 } from './layout';
 import { Ambience } from './ambience';
 import { prefersReducedMotion } from '../motion';
 import { SleepZ, SpeechBubble, Steam } from '../characters/effects';
-import { characterBox, hitTest, type HitBox, type Pose } from './hittest';
+import { hitTest, HitBoxCache, type Pose } from './hittest';
 import { hourOfDay, mixColour, paletteFor, applyWeather, type Palette } from './daylight';
 import { rainAmount, weatherFor, type Weather } from './weather';
 import {
+  ClearanceIndex,
+  FOAM_AMPLITUDE,
+  FOAM_PERIOD,
+  FOAM_STEP,
+  foamPoints,
+  foamShift,
+} from '../perf';
+import {
   drawDeck,
   drawFloor,
-  drawFoam,
   drawSky,
   drawWater,
   makeCausticTexture,
@@ -111,6 +119,10 @@ interface Character {
   effectTimer: number;
   /** A fixed random seed for the character's idle chatter. */
   effectSeed: number;
+  /** True while the character is on its way somewhere. */
+  readonly moving: boolean;
+  /** True when the character has somewhere to go. */
+  readonly hasTarget: boolean;
 }
 
 export class PoolScene {
@@ -127,9 +139,16 @@ export class PoolScene {
   private labelLayer = new Container();
   private maskAbove = new Graphics();
   private maskBelow = new Graphics();
+  /**
+   * The foam line travels past the edge of the pool, so it is clipped to
+   * the water.
+   */
+  private foamMask = new Graphics();
   private foam = new Graphics();
   /** A ring under the character the pointer is over. */
   private hoverRing = new Graphics();
+  /** Where the ring was drawn last, so it is only drawn again when it moves. */
+  private hoverMark: { id: string; x: number; y: number; span: number } | null = null;
   private causticA: TilingSprite | null = null;
   private causticB: TilingSprite | null = null;
   private debugText: Text | null = null;
@@ -140,6 +159,23 @@ export class PoolScene {
 
   private layout: PoolLayout;
   private characters = new Map<string, Character>();
+  /**
+   * Who is standing next to whom.
+   *
+   * The characters that walk on the deck keep their distance from each
+   * other, and the grid keeps the ones that are near each other together,
+   * so the check does not walk over the whole pool every frame.
+   */
+  private readonly clearance = new ClearanceIndex();
+  /** The hit areas of the characters, kept up to date with the movement. */
+  private readonly hitBoxes = new HitBoxCache();
+  /**
+   * The clock of the scene.
+   *
+   * One Date object that is moved forward, so the frame does not make a
+   * new one every time.
+   */
+  private readonly clockDate = new Date();
   /** The status the backend reported last time, to notice the changes. */
   private lastStatus = new Map<string, string>();
   /** The colours of the pool at this moment of the day. */
@@ -186,6 +222,9 @@ export class PoolScene {
       this.loungerCount,
       this.waitingCount,
     );
+    // The cells of the grid are as big as a character, so the rows around
+    // a character are exactly the ones within its reach.
+    this.clearance.setCellSize(this.layout.characterHeight);
 
     this.world.addChild(
       this.skyLayer,
@@ -209,6 +248,10 @@ export class PoolScene {
     this.world.addChild(this.ambience.container);
     this.world.addChild(this.steam.container, this.sleepZ.container, this.bubble.container);
     this.fxLayer.addChild(this.hoverRing);
+    // The foam line is clipped to the water, so the part of it that
+    // travels past the edge of the pool stays out of the way.
+    this.foam.mask = this.foamMask;
+    this.world.addChild(this.foamMask);
 
     this.buildLayers();
     this.bindPointer();
@@ -305,6 +348,7 @@ export class PoolScene {
     this.waterLayer.addChild(water);
 
     this.fxLayer.addChild(this.foam);
+    this.buildFoam();
 
     this.underLayer.mask = this.maskBelow;
     this.surfaceLayer.mask = this.maskAbove;
@@ -325,6 +369,34 @@ export class PoolScene {
     }
   }
 
+  /**
+   * Draw the foam line.
+   *
+   * The foam is a wave that travels along the pool. A wave that travels
+   * sideways is the same shape, so the line is drawn once and then moved
+   * sideways, instead of being built again on every frame.
+   */
+  private buildFoam(): void {
+    const water = this.layout.water;
+    // The line reaches past both ends of the pool, because it travels: the
+    // mask keeps the part that is out of sight out of the way.
+    const reach = FOAM_PERIOD + FOAM_STEP;
+    const points = foamPoints(
+      water.x,
+      water.x - reach,
+      water.x + water.w + reach,
+      0,
+    );
+    this.foam.clear();
+    for (let i = 0; i < points.length; i += 2) {
+      const x = points[i];
+      const y = water.y + points[i + 1];
+      if (i === 0) this.foam.moveTo(x, y);
+      else this.foam.lineTo(x, y);
+    }
+    this.foam.stroke({ width: 3, color: 0xffffff, alpha: 0.5, cap: 'round' });
+  }
+
   private updateMasks(): void {
     const layout = this.layout;
     this.maskAbove.clear();
@@ -332,6 +404,16 @@ export class PoolScene {
     this.maskBelow.clear();
     this.maskBelow
       .rect(0, layout.surfaceY, layout.width, layout.height - layout.surfaceY)
+      .fill(0xffffff);
+
+    // The foam line is only allowed to show over the water. It reaches
+    // past the edge of the pool, and the line it was drawn with stopped
+    // at the last point of its grid, so the mask does the same.
+    const water = layout.water;
+    const right = water.x + Math.floor(water.w / FOAM_STEP) * FOAM_STEP;
+    this.foamMask.clear();
+    this.foamMask
+      .rect(water.x, water.y - FOAM_AMPLITUDE - 4, right - water.x, water.h + FOAM_AMPLITUDE * 2 + 8)
       .fill(0xffffff);
   }
 
@@ -348,6 +430,14 @@ export class PoolScene {
       if (!character) {
         character = this.createCharacter(agent);
         this.characters.set(agent.id, character);
+        this.clearance.add(character);
+        this.hitBoxes.add(
+          character.id,
+          character.x,
+          character.y,
+          character.spec.height * this.layout.characterHeight,
+          poseFor(character.state),
+        );
       }
       this.applyPresentation(character, agent);
       this.noticeStatus(agent);
@@ -360,6 +450,8 @@ export class PoolScene {
       character.label.destroy();
       this.characters.delete(id);
       this.lastStatus.delete(id);
+      this.clearance.remove(id);
+      this.hitBoxes.remove(id);
     }
   }
 
@@ -460,6 +552,12 @@ export class PoolScene {
       lastMode: '',
       effectTimer: 0,
       effectSeed: (spec.seed % 1000) / 1000,
+      get moving(): boolean {
+        return this.state === 'walking' || this.state === 'climbing';
+      },
+      get hasTarget(): boolean {
+        return this.target !== null;
+      },
     };
   }
 
@@ -491,10 +589,7 @@ export class PoolScene {
       character.laneIndex = lane;
       // Every swimmer is at the surface: the waterline cuts it lengthwise,
       // so the head and the back stay above the water.
-      character.swimY =
-        this.layout.surfaceY -
-        this.layout.characterHeight * 0.06 +
-        character.laneOffset * this.layout.characterHeight * 0.16;
+      this.floatAt(character);
       this.ensureUnderwaterRig(character);
       if (character.rig.facing.scale.x !== character.facing) {
         character.rig.facing.scale.x = character.facing;
@@ -574,6 +669,18 @@ export class PoolScene {
     if (character.under) character.under.root.tint = tint;
   }
 
+  /**
+   * The height a swimmer floats at, in the pool as it is now.
+   *
+   * The height comes from the layout and not from the character, so a pool
+   * that is resized takes its swimmers with it: a swimmer that kept the
+   * height of the old pool would float in the sky.
+   */
+  private floatAt(character: Character): number {
+    character.swimY = swimYFor(this.layout, character.laneOffset);
+    return character.swimY;
+  }
+
   // -- the state machine --------------------------------------------
 
   /**
@@ -597,7 +704,7 @@ export class PoolScene {
           character.state = 'swimming';
           character.target = null;
         }
-        character.y = character.swimY;
+        character.y = this.floatAt(character);
         break;
       }
 
@@ -666,7 +773,7 @@ export class PoolScene {
         character.headingForWater = false;
         if (character.climbingInto === 'water') {
           character.state = 'swimming';
-          character.y = character.swimY;
+          character.y = this.floatAt(character);
         } else {
           character.state = 'lounging';
           character.y = this.layout.deckY;
@@ -693,7 +800,10 @@ export class PoolScene {
 
     // The light of the day and the weather on top of it. The layers are
     // rebuilt when either of them changes.
-    const now = new Date();
+    // The clock of the scene is one Date object that is moved forward, so
+    // the frame does not make a new one.
+    const now = this.clockDate;
+    now.setTime(Date.now());
     const clock = now.getTime() / 1000;
     const weather = weatherFor(clock);
     const step = this.paletteStepFor(now);
@@ -711,11 +821,18 @@ export class PoolScene {
     }
     this.rain = rainAmount(clock);
 
+    // The clock of the animation is taken once for the whole frame, so
+    // every character breathes at the same moment.
+    const animTime = performance.now() / 1000;
+
     for (const character of this.characters.values()) {
       this.updateState(character, dt);
       this.moveCharacter(character, dt);
+      // The character has moved, so the grid of the neighbours has to
+      // know where it is now.
+      this.clearance.update(character);
       character.animator.setState(character.state);
-      character.animator.update(dtMs);
+      character.animator.update(dtMs, animTime);
       character.rig.root.position.set(character.x, character.y);
       if (character.under) character.under.root.position.set(character.x, character.y);
 
@@ -738,17 +855,48 @@ export class PoolScene {
           character.state !== 'resting');
     }
 
+    // The hit areas follow the characters, so the pointer does not have to
+    // build them again every time it moves.
+    for (const character of this.characters.values()) {
+      this.hitBoxes.update(
+        character.id,
+        character.x,
+        character.y,
+        character.spec.height * this.layout.characterHeight,
+        poseFor(character.state),
+      );
+    }
+
     // A ring under the character the pointer is over, so the click target
-    // is visible before it is clicked.
-    this.hoverRing.clear();
+    // is visible before it is clicked. It is only drawn again when it
+    // would look different.
     const marked = this.hoveredId ?? store.get().selectedId;
-    if (marked) {
-      const character = this.characters.get(marked);
-      if (character) {
-        const span = character.spec.height * this.layout.characterHeight;
+    const markedCharacter = marked ? this.characters.get(marked) : undefined;
+    if (!markedCharacter) {
+      if (this.hoverMark) {
+        this.hoverRing.clear();
+        this.hoverMark = null;
+      }
+    } else {
+      const span = markedCharacter.spec.height * this.layout.characterHeight;
+      const mark = this.hoverMark;
+      if (
+        !mark ||
+        mark.id !== markedCharacter.id ||
+        mark.x !== markedCharacter.x ||
+        mark.y !== markedCharacter.y ||
+        mark.span !== span
+      ) {
+        this.hoverRing.clear();
         this.hoverRing
-          .ellipse(character.x, character.y, span * 0.42, span * 0.11)
+          .ellipse(markedCharacter.x, markedCharacter.y, span * 0.42, span * 0.11)
           .stroke({ color: 0x52d273, width: 2, alpha: 0.9 });
+        this.hoverMark = {
+          id: markedCharacter.id,
+          x: markedCharacter.x,
+          y: markedCharacter.y,
+          span,
+        };
       }
     }
 
@@ -808,8 +956,9 @@ export class PoolScene {
       this.causticB.position.set(this.layout.water.x, this.layout.water.y);
     }
 
-    this.foam.clear();
-    drawFoam(this.foam, this.layout, reduced ? 0 : this.time);
+    // The foam travels along the pool. The line is built when the pool
+    // changes, and from then on it is only moved.
+    this.foam.position.x = reduced ? 0 : foamShift(this.time);
 
     // The camera follows the character that is picked.
     this.updateCamera(dt);
@@ -879,7 +1028,12 @@ export class PoolScene {
     let limit = Number.POSITIVE_INFINITY;
     if (character.state === 'walking') {
       const gap = this.layout.characterHeight * 0.42;
-      limit = this.clearanceAhead(character, Math.sign(dx), gap);
+      limit = this.clearance.clearanceAhead(
+        character,
+        Math.sign(dx),
+        gap,
+        this.layout.characterHeight,
+      );
       if (limit < step) step = Math.max(0, limit);
     }
     character.lastLimit = limit;
@@ -936,44 +1090,6 @@ export class PoolScene {
       character.rig.facing.scale.x = character.facing;
       if (character.under) character.under.facing.scale.x = character.facing;
     }
-  }
-
-  /**
-   * How far a character may still walk before it bumps into the one ahead.
-   *
-   * Returns the distance to the closest character on the same stretch of
-   * deck, minus the gap that has to be kept between them. When two
-   * characters stand exactly on top of each other — which happens at the
-   * gate, where they all arrive from the same point — the one with the
-   * lower id yields, so the pair never deadlocks.
-   */
-  private clearanceAhead(character: Character, direction: number, gap: number): number {
-    if (direction === 0) return Number.POSITIVE_INFINITY;
-    let nearest = Number.POSITIVE_INFINITY;
-
-    for (const other of this.characters.values()) {
-      if (other === character) continue;
-      if (other.state !== 'walking' && other.state !== 'climbing') continue;
-      // A character that has nowhere to go stands still, so it must not
-      // block the queue behind it.
-      if (other.target === null) continue;
-      // Two characters walking towards each other pass by, they do not
-      // queue up behind one another.
-      if (other.moveDir !== 0 && other.moveDir !== direction) continue;
-      if (Math.abs(other.y - character.y) > this.layout.characterHeight) continue;
-
-      const ahead = (other.x - character.x) * direction;
-      if (ahead > 0.5) {
-        // It is in front: I may walk until the gap between us is restored.
-        nearest = Math.min(nearest, Math.max(0, ahead - gap));
-      } else if (Math.abs(ahead) <= 2 && other.id > character.id) {
-        // Exactly on top of each other: the higher id yields, so the pair
-        // never deadlocks.
-        nearest = 0;
-      }
-    }
-
-    return nearest;
   }
 
   // -- the pointer --------------------------------------------------
@@ -1044,14 +1160,9 @@ export class PoolScene {
 
   /** The agent under the given point, if there is one. */
   private pickAt(x: number, y: number): string | null {
-    const boxes: HitBox[] = [];
-    for (const character of this.characters.values()) {
-      const height = character.spec.height * this.layout.characterHeight;
-      boxes.push(
-        characterBox(character.id, character.x, character.y, height, poseFor(character.state)),
-      );
-    }
-    return hitTest(boxes, x, y);
+    // The hit areas are kept up to date with the characters, so the
+    // pointer does not build them again every time it moves.
+    return hitTest(this.hitBoxes.list, x, y);
   }
 
   // -- the camera ---------------------------------------------------
@@ -1093,11 +1204,15 @@ export class PoolScene {
     this.waitingCount = this.requestedWaiting();
     this.layout = computeLayout(width, height, this.loungerCount, this.waitingCount);
     this.ambience.resize(this.layout);
+    // The cells of the grid follow the size of a character.
+    this.clearance.setCellSize(this.layout.characterHeight);
     this.buildLayers();
     this.updateMasks();
     for (const character of this.characters.values()) {
       character.rig.root.scale.set(this.layout.scale * character.spec.height);
       character.under?.root.scale.set(this.layout.scale * character.spec.height);
+      // The pool has moved, so the swimmers have to move with it.
+      this.floatAt(character);
     }
   }
 

@@ -11,8 +11,8 @@ hook input JSON.
 |---|---|
 | `SessionStart` | A session appears. A character walks in through the gate and takes a lounger. |
 | `UserPromptSubmit` | The session starts working. Its character climbs into the pool and swims. |
-| `PreToolUse` (the `Agent` tool) | A subagent is about to start. The description is remembered, because it arrives before the agent id. |
-| `PostToolUse` (the `Agent` tool) | The agent result carries the `agentId`. The subagent is created and starts swimming. |
+| `PreToolUse` | A tool is about to run. For the `Agent` tool the description is remembered, because it arrives before the agent id. |
+| `PostToolUse` | The tool is done. For the `Agent` tool the result carries the `agentId`, so the subagent is created and starts swimming. For every other tool the session is marked busy, and the tool is remembered. |
 | `SubagentStart` | A subagent starts. It appears in its own lane. |
 | `SubagentStop` | The subagent is done. It climbs out and takes a lounger. |
 | `Stop` | The session is done. Its character climbs out of the pool. |
@@ -37,6 +37,15 @@ the `PostToolUse` result arrives with `agentId`.
 
 This is why the bridge has a `spawn_hint` and a `spawn_bind` event: the agent
 is created twice, once without a name and once with it.
+
+## Every tool, not only the Agent tool
+
+The tool hooks used to watch the `Agent` tool alone, which meant the
+inspector only ever showed the subagent spawns. They watch every tool
+now, so the list of recent tool calls is the real one.
+
+A delivery that is retried is applied once: the events are told apart by
+the `tool_use_id` and the `agent_id`, which are unique for one call.
 
 ## Every hook must be harmless
 

@@ -1,6 +1,9 @@
 :root {
   color-scheme: dark;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* The colour of the focus ring. It is bright on purpose: the focus has
+     to be seen against the dark panels, at a glance. */
+  --focus-ring: #8fdcff;
 }
 
 * {
@@ -117,6 +120,31 @@ body {
 .topbar__scene,
 .topbar__counts {
   color: #8fb3c9;
+}
+
+/* --- The focus ------------------------------------------------------ */
+
+/* There was no focus style at all, so a keyboard user had no idea where
+   they were. The ring is drawn outside the element, so that it is not
+   hidden by the border of the panel. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The row of the list that the keyboard is on. */
+.agent:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  background: #143246;
+  border-color: var(--focus-ring);
+}
+
+/* The inspector takes the focus when it opens: it needs a ring of its
+   own, because it is a panel and not a control. */
+.inspector:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 /* --- The summary --------------------------------------------------- */
@@ -314,6 +342,15 @@ body {
   display: flex;
 }
 
+/* The canvas lives in a wrapper that carries its label: the picture is
+   the list in another shape, so the list is its alternative. */
+.pool-canvas-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+
 .pool-canvas {
   flex: 1;
   min-width: 0;
@@ -507,6 +544,11 @@ body {
 
   .pool-canvas {
     min-height: 55%;
+  }
+
+  .pool-canvas-wrap {
+    flex: 0 0 55%;
+    min-height: 0;
   }
 }
 

@@ -39,6 +39,12 @@ export interface Pose {
   bob: number;
 }
 
+/**
+ * A pose with every angle at zero.
+ *
+ * This one allocates: use it when a pose is made once. A pose that is used
+ * again and again is made once and then put back to zero with `resetPose`.
+ */
 export function zeroPose(): Pose {
   return resetPose({
     rootRot: 0,

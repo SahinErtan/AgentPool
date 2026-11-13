@@ -16,7 +16,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = join(here, '.build');
+// The build directory can be moved out of the way, so that two test runs
+// do not wipe each other's bundles.
+const outDir = process.env.AGENTPOOL_TEST_OUT
+  ? join(here, process.env.AGENTPOOL_TEST_OUT)
+  : join(here, '.build');
 const filter = process.argv[2] ?? '';
 
 const files = (await readdir(here))

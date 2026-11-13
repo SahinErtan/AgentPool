@@ -38,13 +38,13 @@ class Counters:
         with self._lock:
             self.duplicates += count
 
-    def refused(self, reason: str) -> None:
+    def refuse(self, reason: str) -> None:
         with self._lock:
             self.refused += 1
             self.last_error = reason
             self.last_error_at = time.time()
 
-    def failed(self, reason: str) -> None:
+    def fail(self, reason: str) -> None:
         with self._lock:
             self.failed += 1
             self.last_error = reason

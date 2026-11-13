@@ -39,34 +39,90 @@ export function characterBox(
   height: number,
   pose: Pose,
 ): HitBox {
-  if (pose === 'lie') {
-    return {
-      id,
-      x,
-      y,
-      halfWidth: height * 0.7,
-      top: y - height * 0.55,
-      bottom: y + height * 0.1,
-    };
-  }
-  if (pose === 'swim') {
-    return {
-      id,
-      x,
-      y,
-      halfWidth: height * 0.8,
-      top: y - height * 0.95,
-      bottom: y + height * 0.1,
-    };
-  }
-  return {
-    id,
+  return updateCharacterBox(
+    { id, x, y, halfWidth: 0, top: 0, bottom: 0 },
     x,
     y,
-    halfWidth: height * 0.42,
-    top: y - height,
-    bottom: y + height * 0.1,
-  };
+    height,
+    pose,
+  );
+}
+
+/**
+ * The same hit area, written into a box that is already there.
+ *
+ * The characters move every frame, so their hit areas change every frame
+ * as well. Writing into the box that is already there keeps the pointer
+ * from building a new list of boxes every time it moves.
+ */
+export function updateCharacterBox(
+  box: HitBox,
+  x: number,
+  y: number,
+  height: number,
+  pose: Pose,
+): HitBox {
+  if (pose === 'lie') {
+    box.halfWidth = height * 0.7;
+    box.top = y - height * 0.55;
+    box.bottom = y + height * 0.1;
+  } else if (pose === 'swim') {
+    box.halfWidth = height * 0.8;
+    box.top = y - height * 0.95;
+    box.bottom = y + height * 0.1;
+  } else {
+    box.halfWidth = height * 0.42;
+    box.top = y - height;
+    box.bottom = y + height * 0.1;
+  }
+  box.x = x;
+  box.y = y;
+  return box;
+}
+
+/**
+ * The hit areas of the characters, kept up to date.
+ *
+ * The pointer moves far more often than the scene changes, and the areas
+ * change with every frame, so they are held here and written into. The
+ * order is the order the characters were added, which is the order the
+ * old code built its list in.
+ */
+export class HitBoxCache {
+  private readonly boxes = new Map<string, HitBox>();
+  private readonly order: HitBox[] = [];
+
+  /** Add a character to the cache. */
+  add(id: string, x: number, y: number, height: number, pose: Pose): HitBox {
+    const box = characterBox(id, x, y, height, pose);
+    this.boxes.set(id, box);
+    this.order.push(box);
+    return box;
+  }
+
+  /** Take a character out of the cache. */
+  remove(id: string): void {
+    const box = this.boxes.get(id);
+    if (!box) return;
+    this.boxes.delete(id);
+    const index = this.order.indexOf(box);
+    if (index >= 0) this.order.splice(index, 1);
+  }
+
+  /** Put the hit area of a character where the character is now. */
+  update(id: string, x: number, y: number, height: number, pose: Pose): void {
+    const box = this.boxes.get(id);
+    if (!box) {
+      this.add(id, x, y, height, pose);
+      return;
+    }
+    updateCharacterBox(box, x, y, height, pose);
+  }
+
+  /** The hit areas, in the order the characters were added. */
+  get list(): HitBox[] {
+    return this.order;
+  }
 }
 
 /**

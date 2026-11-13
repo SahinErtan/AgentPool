@@ -120,7 +120,10 @@ export function buildRig(spec: CharacterSpec): Rig {
     const lower = drawLimb(sk.lowerArm, sk.limb * 0.9, spec.skin);
     elbow.addChild(lower);
 
-    const hand = drawHand(sk.limb, spec.skin);
+    // The hand is a container, not a drawing: the props hang from it, and
+    // a Graphics cannot hold children in PixiJS v8.
+    const hand = new Container();
+    hand.addChild(drawHand(sk.limb, spec.skin));
     elbow.addChild(hand);
 
     return { shoulder, elbow, hand };

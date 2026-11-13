@@ -30,7 +30,15 @@ export function Summary() {
   }).length;
 
   return (
-    <section className="summary" aria-label="What is happening">
+    // A live region: a screen reader hears how many agents are working,
+    // without anybody having to ask for it.
+    <section
+      className="summary"
+      aria-label="What is happening"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       <span className="summary__item summary__item--working">{working} working</span>
       <span className="summary__item summary__item--idle">{idle} idle</span>
       <span className="summary__item summary__item--done">{done} done</span>

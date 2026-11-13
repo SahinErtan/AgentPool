@@ -30,6 +30,11 @@ clock, the lamps come on when the sun goes down, and sometimes it rains.
 - The pool itself: the agents swim, they lie on the loungers with a cup of
   tea or a newspaper, and when one of them finishes the others wave. The
   camera looks at the agent you pick.
+- The keyboard: the arrow keys walk the list, Enter opens the inspector,
+  Escape closes it. The canvas is labelled, the list is the same
+  information in text.
+- A link to an agent: `?agent=session:abc` opens the dashboard with that
+  agent selected, and the address follows the selection.
 
 Inside Claude Code, `/agentpool` asks the pool what the agents are doing and
 reports it back.
@@ -58,7 +63,20 @@ make server      # the backend on :38000, with the built frontend
 make frontend    # the vite dev server on :5173, with hot reload
 make test        # the backend and the frontend test suites
 make lab         # the animation lab: every swim style and every idle activity
+make agentpool   # ask the running pool what the agents are doing
 ```
+
+The command works from a script too:
+
+```sh
+make agentpool ARGS="--json"
+make agentpool ARGS="--watch"
+make agentpool ARGS="--agent session:abc"
+```
+
+It answers with the same state the dashboard draws. The exit code is meant
+to be used: 0 when the pool answered, 1 when the backend could not be
+reached, 3 when the agent that was asked for is not there.
 
 The frontend tests run in plain Node: the character system has its own
 invariants — a character is a pure function of its id, the animation does not
@@ -108,6 +126,22 @@ The parts are documented in `docs/`:
 | `AGENTPOOL_SESSION_TTL_S` | `900` | How long a silent session is kept. |
 | `AGENTPOOL_EXIT_GRACE_S` | `30` | How long a closing agent may take to walk out. |
 | `AGENTPOOL_CLAUDE_DIR` | `~/.claude` | Where the reconciler looks for sessions. |
+| `AGENTPOOL_TOKEN` | *(none)* | A shared token the local port asks for. |
+| `AGENTPOOL_NOTIFY` | `1` | Tell the desktop when a long agent is done. |
+| `AGENTPOOL_JOURNAL` | `1` | Write the events to the journal. |
+| `AGENTPOOL_JOURNAL_KEEP_DAYS` | `7` | How long the journal is kept. |
 
-The frontend has two query parameters: `?debug` shows the state of every
-character, and `?lab` opens the animation lab instead of the pool.
+The frontend has three query parameters: `?debug` shows the state of every
+character, `?lab` opens the animation lab instead of the pool, and
+`?agent=<id>` opens with that agent selected.
+
+The backend answers on these addresses:
+
+| Address | What it says |
+|---|---|
+| `/api/health` | Whether it is alive, and how long it has been up. |
+| `/api/state` | The whole pool: every agent, its counts and the scene. |
+| `/api/agents` | The agents, without the scene. |
+| `/api/agents/<id>` | One agent, with its last events. |
+| `/api/history` | The journal, read back: the most recent events. |
+| `/api/metrics` | What the backend has done: the counters, the drops, the last error. |
