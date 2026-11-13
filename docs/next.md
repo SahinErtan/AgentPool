@@ -306,12 +306,49 @@ test would have caught the ghost lanes on the first day.
 
 ## Sprint 15 — what the observer found (to do)
 
-The observer that watched the dashboard while the work was being done
-found the two bugs that no test had caught: the characters stood at the
-gate and never moved, and the swimmers were drawn above the water. Both
-are fixed. What is left is what it found that is not a bug but a
-missing thing — the list of the second round is added here when it
-arrives.
+An agent watched the dashboard while the work was being done and reported
+what it saw, twice. The first round found the two bugs that no test had
+caught: the characters stood at the gate and never moved, because they
+were all born on the same spot and each of them told the other to stand
+still; and the swimmers were drawn above the water, because the height a
+swimmer swims at was worked out once and never again.
+
+The second round confirmed the fixes and found the rest. Most of it is
+fixed. What is left:
+
+### 29. There is no history to look back at
+
+`/api/history` and `/api/metrics` exist, and nothing in the dashboard
+calls them. There is no view of what happened: who finished, when, and
+what the backend did while it was up. The panel keeps the agents that
+left in its memory for ten minutes — that memory is the beginning of a
+history view, and the journal is where the rest of it is.
+
+### 30. Two agents with the same name are the same row
+
+Seven rows may say "general-purpose" and three may say
+"code-reviewer", and nothing tells them apart. The name of a
+subagent is its kind, not its description — the description is in the
+prompt, and the prompt is what makes one subagent different from
+another. The list should show a few words of it.
+
+### 31. The counts are said twice
+
+The top bar says "2 working / 4 total" and the summary says "2 working 2
+idle 0 done". One of them is enough.
+
+### 32. The pool is a big flat rectangle
+
+A hard seam runs across the water where the deep part begins, and with
+one swimmer most of the picture is empty water. The water could have a
+floor that is seen through it, and the deep end could be deeper.
+
+### 33. On a phone the characters are too small to read
+
+At 390 pixels the characters are 25 to 30 pixels tall and fuse into a
+strip, and the label above them is bigger than the figure it names. The
+phone layout needs its own drawing: fewer characters, bigger, and no
+label at all.
 
 ## Sprint 16 — packaging (parked)
 
