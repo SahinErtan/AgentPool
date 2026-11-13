@@ -106,7 +106,7 @@ def create_state_router(
     return router
 
 
-def create_metrics_router(broker, hub, registry, counters=None) -> APIRouter:
+def create_metrics_router(broker, hub, registry, counters=None, token: str = "") -> APIRouter:
     """What the backend has done, in numbers.
 
     The broker counts the events it drops, the hub counts the messages a
@@ -116,7 +116,10 @@ def create_metrics_router(broker, hub, registry, counters=None) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/metrics")
-    async def metrics() -> Dict[str, Any]:
+    async def metrics(request: Request) -> Dict[str, Any]:
+        # The counters are as much a part of the pool as the agents are.
+        if token and not auth.token_matches(token, auth.token_from_request(request)):
+            raise HTTPException(status_code=401, detail="the token is missing or wrong")
         payload: Dict[str, Any] = {
             "type": "metrics",
             "agents": len(registry),

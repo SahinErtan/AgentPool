@@ -304,7 +304,7 @@ The parts with no tests are the parts that break: the WebSocket client
 ingest endpoint, the state endpoints and the store. A registry-and-scene
 test would have caught the ghost lanes on the first day.
 
-## Sprint 15 — what the observer found
+## Sprint 15 — what the observer found (done)
 
 An agent watched the dashboard while the work was being done and reported
 what it saw, twice. The first round found the two bugs that no test had
@@ -366,6 +366,8 @@ strip, and the label above them is bigger than the figure it names.
 **How:** fewer characters and bigger ones on a narrow canvas, and no
 labels at all — the list beside the pool is the text version of the same
 thing.
+
+All five are done. What is left of the plan is the packaging.
 
 ## Sprint 16 — packaging (parked)
 

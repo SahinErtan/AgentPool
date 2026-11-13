@@ -22,7 +22,7 @@ function formatDuration(from: number | null, to: number | null): string {
  * The prompt of an agent is written in markdown, and the panel shows it
  * as plain text: the stars and the backticks are noise here.
  */
-function plainText(value: string): string {
+export function plainText(value: string): string {
   return value
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
@@ -30,6 +30,33 @@ function plainText(value: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/**
+ * Cut a text at a word boundary.
+ *
+ * A cut in the middle of a word is unreadable, so the last word that does
+ * not fit is dropped and an ellipsis says that something is missing. A
+ * single word that is longer than the limit stays whole: there is no
+ * word boundary inside it to cut at.
+ */
+export function cutAtWord(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const words = text.split(' ').filter(Boolean);
+  let out = '';
+  for (const word of words) {
+    if (out === '') {
+      if (word.length > limit) return word;
+      out = word;
+      continue;
+    }
+    if (out.length + 1 + word.length > limit) break;
+    out += ` ${word}`;
+  }
+  return `${out}…`;
+}
+
+/** How long the Detail of an agent may get before it is cut. */
+const DETAIL_LIMIT = 160;
 
 /**
  * Where the agent is: the presentation says so, but an agent that is on
@@ -47,9 +74,9 @@ function slotOf(agent: AgentView, props: Record<string, unknown>): string {
   return '—';
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="inspector__row">
+    <div className="inspector__row" title={title}>
       <span className="inspector__key">{label}</span>
       <span className="inspector__value">{value}</span>
     </div>
@@ -93,6 +120,9 @@ export function Inspector() {
   }
 
   const props = agent.presentation.props;
+  // The Detail of a session is the whole prompt, in markdown. It is cut
+  // to a few lines here; the full text stays in the title of the row.
+  const detailText = agent.detail ? plainText(agent.detail) : '';
 
   return (
     <section
@@ -128,7 +158,11 @@ export function Inspector() {
         <Row label="Session" value={agent.session_id ?? '—'} />
         <Row label="Parent" value={agent.parent_id ?? '—'} />
         <Row label="Type" value={agent.subagent_type ?? agent.tool_name ?? '—'} />
-        <Row label="Detail" value={agent.detail ? plainText(agent.detail) : '—'} />
+        <Row
+          label="Detail"
+          value={detailText ? cutAtWord(detailText, DETAIL_LIMIT) : '—'}
+          title={detailText || undefined}
+        />
         <Row label="Folder" value={agent.cwd ?? '—'} />
         <Row label="Route" value={String(props.route ?? '—')} />
         <Row label="From → to" value={`${props.from ?? '—'} → ${props.to ?? '—'}`} />

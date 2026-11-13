@@ -5,6 +5,7 @@ import { PoolCanvas } from './scene/pool/PoolCanvas';
 import { searchWithAgent, store } from './state/store';
 import { useStore } from './state/useStore';
 import { AgentList } from './ui/AgentList';
+import { Activity } from './ui/Activity';
 import { Inspector } from './ui/Inspector';
 import { Legend } from './ui/Legend';
 import { Summary } from './ui/Summary';
@@ -71,6 +72,9 @@ export function App() {
         <div className="stage__overlay">
           <Summary />
           <Legend />
+          {/* The activity is a disclosure: it takes no room until it is
+              opened, so it never squeezes the list out of the panel. */}
+          <Activity />
           <AgentList />
           <Inspector />
         </div>

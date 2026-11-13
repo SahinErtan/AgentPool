@@ -9,7 +9,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cameraLeftFor, computeLayout, resolveWaypoint } from '../src/scene/pool/layout';
+import {
+  cameraLeftFor,
+  computeLayout,
+  labelsVisible,
+  loungersFor,
+  PHONE_WIDTH,
+  poolDepthAt,
+  poolFloorY,
+  poolLeftAtDepth,
+  resolveWaypoint,
+  SHALLOW_FRACTION,
+} from '../src/scene/pool/layout';
 
 const SIZES: [number, number][] = [
   [320, 240],
@@ -166,4 +177,84 @@ test('the camera rests where it was', () => {
   // With nothing picked, the view is the screen.
   const layout = computeLayout(1200, 727);
   assert.equal(cameraLeftFor(layout, layout.width / 2, 1), 0);
+});
+
+test('a phone draws fewer loungers', () => {
+  // The backend says the pool has six loungers.
+  assert.equal(loungersFor(390, 6), 2);
+  assert.equal(loungersFor(500, 6), 3);
+  // A wide screen has room for all of them.
+  assert.equal(loungersFor(1200, 6), 6);
+  // The pool never has more loungers than it asked for.
+  assert.equal(loungersFor(390, 1), 1);
+  assert.equal(loungersFor(1200, 2), 2);
+});
+
+test('the layout of a phone has fewer loungers and bigger characters', () => {
+  const phone = computeLayout(390, 844, 6, 4);
+  assert.equal(phone.loungers.length, 2);
+  // The character is bigger than the floor of forty pixels: on a phone
+  // the picture shows fewer characters, but they can be read.
+  assert.ok(phone.characterHeight > 40, `the character is only ${phone.characterHeight} tall`);
+  // And it still fits on the deck: the loungers do not overlap.
+  for (let index = 1; index < phone.loungers.length; index += 1) {
+    const previous = phone.loungers[index - 1];
+    const current = phone.loungers[index];
+    assert.ok(previous.x + previous.w <= current.x);
+  }
+});
+
+test('a wide screen keeps every lounger', () => {
+  const wide = computeLayout(1200, 727, 10, 4);
+  assert.equal(wide.loungers.length, 10);
+});
+
+test('the labels are not drawn on a phone', () => {
+  assert.equal(labelsVisible(390), false);
+  assert.equal(labelsVisible(PHONE_WIDTH - 1), false);
+  assert.equal(labelsVisible(PHONE_WIDTH), true);
+  assert.equal(labelsVisible(1200), true);
+
+  assert.equal(computeLayout(390, 844).labels, false);
+  assert.equal(computeLayout(1200, 727).labels, true);
+});
+
+test('the pool is deeper at the ladder end than at the gate end', () => {
+  const layout = computeLayout(1200, 727);
+  const shallow = poolDepthAt(layout, layout.water.x);
+  const deep = poolDepthAt(layout, layout.water.x + layout.water.w);
+  assert.ok(deep > shallow, 'the pool is not deeper at the deep end');
+  assert.ok(
+    Math.abs(shallow - layout.water.h * SHALLOW_FRACTION) < 1,
+    'the shallow end is not the depth it should be',
+  );
+  assert.ok(Math.abs(deep - layout.water.h) < 1, 'the deep end is not the full depth');
+});
+
+test('the floor of the pool is under the surface everywhere', () => {
+  for (const [width, height] of SIZES) {
+    const layout = computeLayout(width, height);
+    for (let step = 0; step <= 10; step += 1) {
+      const x = layout.water.x + (layout.water.w * step) / 10;
+      const floor = poolFloorY(layout, x);
+      assert.ok(floor > layout.surfaceY, 'the floor is above the water');
+      assert.ok(floor <= layout.water.y + layout.water.h + 0.001, 'the floor is below the pool');
+    }
+  }
+});
+
+test('the place where the floor reaches a depth is the inverse of the depth', () => {
+  const layout = computeLayout(1200, 727);
+  const water = layout.water;
+  // Above the shallow end the pool reaches all the way to its edge.
+  assert.equal(poolLeftAtDepth(layout, water.y), water.x);
+  // At the bottom of the pool it only reaches the deep end.
+  assert.equal(poolLeftAtDepth(layout, water.y + water.h), water.x + water.w);
+  // In between it is in between: a depth between the shallow end and the
+  // deep end is reached somewhere along the pool.
+  const between = SHALLOW_FRACTION + (1 - SHALLOW_FRACTION) / 2;
+  const middle = poolLeftAtDepth(layout, water.y + water.h * between);
+  assert.ok(middle > water.x && middle < water.x + water.w);
+  // The two agree about the depth at that place.
+  assert.ok(Math.abs(poolDepthAt(layout, middle) - water.h * between) < 0.001);
 });

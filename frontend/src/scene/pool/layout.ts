@@ -54,12 +54,94 @@ export interface PoolLayout {
   characterHeight: number;
   /** The scale factor applied to the unit-space rig. */
   scale: number;
+  /**
+   * Whether the short tag above every character is drawn.
+   *
+   * On a phone the figure has to be read on its own: the tag is bigger
+   * than the figure it names, and the list beside the pool is the text
+   * version of the same thing.
+   */
+  labels: boolean;
 }
 
 export const LANE_COUNT = 4;
 export const LOUNGER_COUNT = 6;
 /** How many agents can wait at the pool edge when every lounger is taken. */
 export const WAITING_COUNT = 4;
+
+/**
+ * Below this width the canvas is a phone.
+ *
+ * The picture on a phone is small, so the scene shows fewer characters and
+ * shows them bigger, and the text is left to the list beside the pool.
+ */
+export const PHONE_WIDTH = 640;
+
+/**
+ * How deep the pool is at its shallow end, as a part of its depth.
+ *
+ * The floor of the pool is a slope: the water is deeper at the ladder end
+ * than at the gate end, so the pool is not a flat rectangle.
+ */
+export const SHALLOW_FRACTION = 0.82;
+
+/**
+ * How many loungers the deck has room for.
+ *
+ * The backend owns the number of loungers, but the picture has to fit on
+ * the canvas: on a phone the deck is a short row, so the scene draws a few
+ * of them and the characters become bigger.
+ *
+ * @param width The width of the canvas.
+ * @param requested How many loungers the backend says the pool has.
+ */
+export function loungersFor(width: number, requested: number): number {
+  const count = Math.max(1, Math.round(requested));
+  if (width >= PHONE_WIDTH) return count;
+  // A phone: two loungers on the narrowest screens, three on the rest.
+  return Math.min(count, width < 420 ? 2 : 3);
+}
+
+/**
+ * Whether the scene draws the tag above every character.
+ *
+ * @param width The width of the canvas.
+ */
+export function labelsVisible(width: number): boolean {
+  return width >= PHONE_WIDTH;
+}
+
+/**
+ * The depth of the water at a point along the pool.
+ *
+ * @param x The place along the pool, in world pixels.
+ */
+export function poolDepthAt(layout: PoolLayout, x: number): number {
+  const water = layout.water;
+  const t = Math.max(0, Math.min(1, (x - water.x) / Math.max(1, water.w)));
+  return water.h * (SHALLOW_FRACTION + (1 - SHALLOW_FRACTION) * t);
+}
+
+/** The bottom of the pool at a point along it, in world pixels. */
+export function poolFloorY(layout: PoolLayout, x: number): number {
+  return layout.water.y + poolDepthAt(layout, x);
+}
+
+/**
+ * The place where the floor of the pool reaches a given depth.
+ *
+ * The floor is a slope, so the deeper the water the further to the right
+ * the pool begins.
+ *
+ * @param y The depth below the surface, in world pixels.
+ */
+export function poolLeftAtDepth(layout: PoolLayout, y: number): number {
+  const water = layout.water;
+  const t = ((y - water.y) / Math.max(1, water.h) - SHALLOW_FRACTION) / (1 - SHALLOW_FRACTION);
+  if (t <= 0) return water.x;
+  if (t >= 1) return water.x + water.w;
+  return water.x + t * water.w;
+}
 
 /**
  * @param loungerCount How many loungers the deck has. The backend owns that
@@ -72,10 +154,12 @@ export function computeLayout(
   loungerCount = LOUNGER_COUNT,
   waitingCount = WAITING_COUNT,
 ): PoolLayout {
-  const loungers_ = Math.max(1, Math.round(loungerCount));
   const waiting_ = Math.max(0, Math.round(waitingCount));
   const w = Math.max(320, width);
   const h = Math.max(240, height);
+  // On a phone the deck has no room for every lounger, so the scene draws
+  // a few of them and the characters become bigger.
+  const loungers_ = loungersFor(w, loungerCount);
 
   // The character is as big as the height of the window allows, but it
   // also has to fit on the deck: there is one lounger per character and
@@ -90,13 +174,28 @@ export function computeLayout(
     const end = right - ladder - Math.round(charHeight * 0.4);
     return Math.max(0, end - start);
   };
-  let characterHeight = Math.round(Math.min(Math.max(h * 0.16, 64), 128));
-  const perLounger = deckSpace(characterHeight) / Math.max(1, loungers_);
-  // A character lies on its side, so it is as wide as it is tall: that is
-  // the width it needs on a lounger. Two of them that are too wide lie on
-  // top of each other, and then the pool is one brown lump.
-  const fits = Math.floor(perLounger / 1.3);
-  characterHeight = Math.max(40, Math.min(characterHeight, fits));
+  const wanted = Math.round(Math.min(Math.max(h * 0.16, 64), 128));
+  let characterHeight = wanted;
+  if (w < PHONE_WIDTH) {
+    // On a phone the character is the thing that has to be read, so it
+    // takes the room the fewer loungers leave free. The size is searched
+    // for, because a smaller character leaves more room on the deck: the
+    // one-pass estimate below would shrink it to the floor instead.
+    characterHeight = 40;
+    for (let candidate = 40; candidate <= wanted; candidate += 1) {
+      const perLounger = deckSpace(candidate) / Math.max(1, loungers_);
+      // A character lies on its side, so it is as wide as it is tall.
+      const fits = Math.floor(perLounger / 1.3);
+      if (fits >= candidate) characterHeight = candidate;
+    }
+  } else {
+    const perLounger = deckSpace(characterHeight) / Math.max(1, loungers_);
+    // A character lies on its side, so it is as wide as it is tall: that is
+    // the width it needs on a lounger. Two of them that are too wide lie on
+    // top of each other, and then the pool is one brown lump.
+    const fits = Math.floor(perLounger / 1.3);
+    characterHeight = Math.max(40, Math.min(characterHeight, fits));
+  }
 
   const deckY = Math.round(h * 0.4);
   // The deck is a terrace: the characters stand on the upper edge, and the
@@ -204,6 +303,7 @@ export function computeLayout(
     ladder,
     characterHeight,
     scale: characterHeight,
+    labels: labelsVisible(w),
   };
 }
 

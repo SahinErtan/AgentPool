@@ -6,7 +6,7 @@
  */
 
 import { Graphics, Texture } from 'pixi.js';
-import type { PoolLayout } from './layout';
+import { poolFloorY, poolLeftAtDepth, type PoolLayout } from './layout';
 import { mixColour, type Palette } from './daylight';
 
 export const COLORS = {
@@ -164,15 +164,76 @@ export function drawDeck(g: Graphics, layout: PoolLayout, palette: Palette): voi
 
 export function drawFloor(g: Graphics, layout: PoolLayout, palette: Palette): void {
   const water = layout.water;
-  g.rect(water.x, water.y, water.w, water.h).fill(palette.floor);
-  // Lane lines on the floor.
-  for (const lane of layout.lanes) {
-    g.rect(water.x, lane.y + lane.h - 3, water.w, 3).fill({ color: 0x6fb2cf, alpha: 0.55 });
-  }
-  // Depth markers.
+  const shallow = poolFloorY(layout, water.x);
+  const deep = poolFloorY(layout, water.x + water.w);
+
+  // The floor of the pool is a slope: the water is deeper at the ladder
+  // end than at the gate end, so the pool is not a flat rectangle.
+  g.poly(
+    [
+      water.x,
+      water.y,
+      water.x + water.w,
+      water.y,
+      water.x + water.w,
+      deep,
+      water.x,
+      shallow,
+    ],
+    true,
+  ).fill(palette.floor);
+
+  // The walls at the two ends of the pool, seen through the water.
+  const wall = Math.max(4, Math.round(layout.characterHeight * 0.12));
+  g.rect(water.x, water.y, wall, shallow - water.y).fill({
+    color: palette.poolWall,
+    alpha: 0.5,
+  });
+  g.rect(water.x + water.w - wall, water.y, wall, deep - water.y).fill({
+    color: palette.poolWall,
+    alpha: 0.5,
+  });
+
+  // The lane lines are painted on the floor of the pool, so they follow
+  // the slope of it.
+  g.moveTo(water.x, shallow - 3)
+    .lineTo(water.x + water.w, deep - 3)
+    .stroke({ width: 3, color: 0x4a9ec4, alpha: 0.9 });
+
+  // The depth markers, along the floor.
   for (let x = water.x + 40; x < water.x + water.w - 40; x += 120) {
-    g.rect(x, water.y + water.h - 14, 22, 5).fill({ color: 0x2b6f92, alpha: 0.5 });
+    g.rect(x, poolFloorY(layout, x) - 9, 22, 5).fill({ color: 0x1c5a7d, alpha: 0.85 });
   }
+}
+
+/**
+ * The concrete the pool is dug into.
+ *
+ * It is drawn over the caustics, so the light of the water does not fall
+ * on the ground around the pool.
+ */
+export function drawShell(g: Graphics, layout: PoolLayout, palette: Palette): void {
+  const water = layout.water;
+  const shallow = poolFloorY(layout, water.x);
+  const deep = poolFloorY(layout, water.x + water.w);
+  const bottom = layout.height;
+  const worldRight = layout.worldLeft + layout.worldWidth;
+
+  // The ground on both sides of the pool.
+  g.rect(
+    layout.worldLeft,
+    layout.surfaceY,
+    water.x - layout.worldLeft,
+    bottom - layout.surfaceY,
+  ).fill(palette.poolWall);
+  g.rect(water.x + water.w, layout.surfaceY, worldRight - (water.x + water.w), bottom - layout.surfaceY).fill(
+    palette.poolWall,
+  );
+
+  // The ground under the floor of the pool.
+  g.poly([water.x, shallow, water.x + water.w, deep, water.x + water.w, bottom, water.x, bottom], true).fill(
+    palette.poolWall,
+  );
 }
 
 /**
@@ -227,14 +288,40 @@ export function makeCausticTexture(size = 128): Texture {
   return texture;
 }
 
+/** How many bands the depth of the water is made of. */
+const DEPTH_BANDS = 16;
+
 export function drawWater(g: Graphics, layout: PoolLayout, palette: Palette): void {
   const water = layout.water;
-  g.rect(water.x, water.y, water.w, water.h).fill({ color: palette.water, alpha: 0.55 });
-  // A darker band towards the bottom reads as depth.
-  g.rect(water.x, water.y + water.h * 0.6, water.w, water.h * 0.4).fill({
-    color: palette.waterDeep,
-    alpha: 0.22,
-  });
+  // The depth of the water is a gradient, not two rectangles: the water
+  // gets darker the deeper it is. Every band is a strip of the pool
+  // between two depths, and the slope of the floor cuts the strips short.
+  for (let band = 0; band < DEPTH_BANDS; band += 1) {
+    const top = water.y + (water.h * band) / DEPTH_BANDS;
+    const bottom = water.y + (water.h * (band + 1)) / DEPTH_BANDS;
+    const leftTop = poolLeftAtDepth(layout, top);
+    const leftBottom = poolLeftAtDepth(layout, bottom);
+    if (leftBottom >= water.x + water.w) continue;
+    const t = (band + 0.5) / DEPTH_BANDS;
+    g.poly(
+      [
+        leftTop,
+        top,
+        water.x + water.w,
+        top,
+        water.x + water.w,
+        bottom,
+        leftBottom,
+        bottom,
+      ],
+      true,
+    ).fill({
+      color: mixColour(palette.water, palette.waterDeep, t),
+      // The water is thin enough to see the floor of the pool through it,
+      // but the deeper it is the less of the floor comes through.
+      alpha: 0.5 + 0.25 * t,
+    });
+  }
 }
 
 /** The foam line along the surface. */

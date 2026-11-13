@@ -25,6 +25,11 @@ export interface Palette {
   water: number;
   waterDeep: number;
   floor: number;
+  /**
+   * The concrete the pool is dug into: the ground around it and the
+   * walls that are seen through the water.
+   */
+  poolWall: number;
   /** How bright the day is: 0 in the middle of the night, 1 at noon. */
   light: number;
   /** Whether the lamps around the pool are on. */
@@ -46,6 +51,7 @@ const NIGHT: Palette = {
   water: 0x123a63,
   waterDeep: 0x0a2444,
   floor: 0x2b5c7a,
+  poolWall: 0x232b38,
   light: 0.2,
   lamps: true,
   stars: true,
@@ -63,6 +69,7 @@ const DAWN: Palette = {
   water: 0x3f7fb0,
   waterDeep: 0x1f4f7d,
   floor: 0xbcd8e4,
+  poolWall: 0xa8a294,
   light: 0.62,
   lamps: true,
   stars: false,
@@ -80,6 +87,7 @@ const MORNING: Palette = {
   water: 0x2f86c9,
   waterDeep: 0x14508c,
   floor: 0xbfe4f2,
+  poolWall: 0xdcd4c2,
   light: 1,
   lamps: false,
   stars: false,
@@ -97,6 +105,7 @@ const NOON: Palette = {
   water: 0x2f92d6,
   waterDeep: 0x125a9c,
   floor: 0xcbeaf6,
+  poolWall: 0xe8e0cd,
   light: 1,
   lamps: false,
   stars: false,
@@ -114,6 +123,7 @@ const AFTERNOON: Palette = {
   water: 0x2d7fbe,
   waterDeep: 0x144a83,
   floor: 0xc2e0ec,
+  poolWall: 0xe0d5bd,
   light: 0.92,
   lamps: false,
   stars: false,
@@ -131,6 +141,7 @@ const DUSK: Palette = {
   water: 0x27557f,
   waterDeep: 0x123c6e,
   floor: 0x7f9fb4,
+  poolWall: 0x6f6255,
   light: 0.45,
   lamps: true,
   stars: false,
@@ -176,6 +187,7 @@ function mixPalette(a: Palette, b: Palette, t: number): Palette {
     water: mixColour(a.water, b.water, t),
     waterDeep: mixColour(a.waterDeep, b.waterDeep, t),
     floor: mixColour(a.floor, b.floor, t),
+    poolWall: mixColour(a.poolWall, b.poolWall, t),
     light: a.light + (b.light - a.light) * t,
     // The lamps are a switch, not a gradient: they come on when it gets
     // dark and go off when it gets light.

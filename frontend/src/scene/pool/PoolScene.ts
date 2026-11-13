@@ -46,6 +46,7 @@ import {
 import {
   drawDeck,
   drawFloor,
+  drawShell,
   drawSky,
   drawWater,
   makeCausticTexture,
@@ -352,7 +353,10 @@ export class PoolScene {
       this.causticsLayer.addChild(sprite);
     }
 
+    // The shell of the pool is drawn together with the water: it has to
+    // be over the caustics, which are over the floor of the pool.
     const water = new Graphics();
+    drawShell(water, layout, this.palette);
     drawWater(water, layout, this.palette);
     this.waterLayer.addChild(water);
 
@@ -519,6 +523,39 @@ export class PoolScene {
     return gate.x + waiting * this.layout.characterHeight * 0.34;
   }
 
+  /**
+   * The place in the queue at the gate.
+   *
+   * The agents that wait at the gate stand in a line, so that they do not
+   * stand on top of each other.
+   */
+  private gateQueueFor(character: Character): number {
+    let queue = 0;
+    for (const other of this.characters.values()) {
+      if (other === character) continue;
+      if (other.desired !== 'waiting' || other.waitingSlot !== null) continue;
+      queue += 1;
+    }
+    return queue;
+  }
+
+  /**
+   * A spot at the edge of the pool that nobody has taken.
+   *
+   * The agents that have no lounger wait there. The spots at the back are
+   * tried first, because the backend hands the ones at the front to the
+   * agents it knows are waiting.
+   */
+  private freeWaitingSlot(character: Character): number | null {
+    for (let index = this.layout.waiting.length - 1; index >= 0; index -= 1) {
+      const taken = [...this.characters.values()].some(
+        (other) => other !== character && other.waitingSlot === index,
+      );
+      if (!taken) return index;
+    }
+    return null;
+  }
+
   private createCharacter(agent: AgentView): Character {
     const role: Role =
       agent.kind === 'session'
@@ -632,12 +669,17 @@ export class PoolScene {
     if (character.desired === 'lounge') {
       const lounger = Number(props.lounger ?? -1);
       if (!this.layout.loungers[lounger]) {
-        // The pool is full: the agent waits at the gate.
+        // The pool is full: the agent waits at the edge of the pool, and
+        // at the gate when even the edge is full. On a phone the deck
+        // holds fewer loungers than the pool has, so some of the agents
+        // wait at the edge.
+        const slot = this.freeWaitingSlot(character);
         character.desired = 'waiting';
-        character.waitingSlot = null;
         character.loungerSlot = null;
+        character.waitingSlot = slot;
+        character.gateQueue = this.gateQueueFor(character);
         character.state = 'walking';
-        character.target = 'gate';
+        character.target = slot === null ? `gate:${character.gateQueue}` : `waiting:${slot}`;
         return;
       }
       if (character.loungerSlot !== lounger) {
@@ -900,13 +942,16 @@ export class PoolScene {
       }
       // The label would pile up on a row of loungers, so it is only shown
       // for the selected agent, for the one under the pointer, and for the
-      // ones that are on the move.
+      // ones that are on the move. On a phone it is not drawn at all: the
+      // figure is too small to carry it, and the list beside the pool
+      // says the same thing in words.
       character.label.visible =
-        character.id === store.get().selectedId ||
-        character.id === this.hoveredId ||
-        (character.state !== 'swimming' &&
-          character.state !== 'lounging' &&
-          character.state !== 'resting');
+        this.layout.labels &&
+        (character.id === store.get().selectedId ||
+          character.id === this.hoveredId ||
+          (character.state !== 'swimming' &&
+            character.state !== 'lounging' &&
+            character.state !== 'resting'));
     }
 
     // The hit areas follow the characters, so the pointer does not have to
@@ -1280,6 +1325,9 @@ export class PoolScene {
       character.under?.root.scale.set(this.layout.scale * character.spec.height);
       // The pool has moved, so the swimmers have to move with it.
       this.floatAt(character);
+      // The deck may have fewer loungers than it had: the agents that do
+      // not fit have to be told where to wait now.
+      this.applyPresentation(character, character.agent);
     }
   }
 

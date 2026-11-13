@@ -255,7 +255,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     app.include_router(create_state_router(registry, scene, started_at, journal, settings.token))
     app.include_router(create_ws_router(hub, settings.token))
-    app.include_router(create_metrics_router(broker, hub, registry, counters))
+    app.include_router(create_metrics_router(broker, hub, registry, counters, settings.token))
 
     dist = settings.frontend_dist
     if dist.is_dir():

@@ -35,9 +35,13 @@ clock, the lamps come on when the sun goes down, and sometimes it rains.
   information in text.
 - A link to an agent: `?agent=session:abc` opens the dashboard with that
   agent selected, and the address follows the selection.
+- An activity section: the last things that happened in the pool, and the
+  health of the backend — the deliveries, the refusals, the dropped
+  messages and the last error.
 
 Inside Claude Code, `/agentpool` asks the pool what the agents are doing and
-reports it back.
+reports it back. From a script, `make agentpool` asks the same question and
+the exit code says whether the pool answered.
 
 ## Install
 

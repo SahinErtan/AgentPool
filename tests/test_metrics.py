@@ -84,6 +84,21 @@ def test_a_duplicate_is_counted(tmp_path) -> None:
     assert metrics["ingest"]["duplicates"] >= 1
 
 
+def test_the_counters_need_the_token_too(tmp_path) -> None:
+    """The counters are as much a part of the pool as the agents are."""
+    settings = Settings(
+        state_dir=tmp_path / "state",
+        claude_dir=tmp_path / "claude",
+        journal_enabled=False,
+        token="s3cret",
+    )
+    client = TestClient(create_app(settings))
+
+    assert client.get("/api/metrics").status_code == 401
+    assert client.get("/api/metrics", headers={"X-AgentPool-Token": "s3cret"}).status_code == 200
+    assert client.get("/api/metrics?token=s3cret").status_code == 200
+
+
 def test_the_history_is_readable(tmp_path) -> None:
     client = _client(tmp_path)
     payload = client.get("/api/history").json()

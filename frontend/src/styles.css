@@ -117,8 +117,7 @@ body {
 }
 
 .topbar__status,
-.topbar__scene,
-.topbar__counts {
+.topbar__scene {
   color: #8fb3c9;
 }
 
@@ -174,6 +173,11 @@ body {
 
 .summary__item--recent {
   color: #7fc7e8;
+}
+
+/* The total is said once, at the end, and it is quieter than the rest. */
+.summary__item--total {
+  color: #5c7d92;
 }
 
 /* --- The filters ---------------------------------------------------- */
@@ -276,6 +280,7 @@ body {
   display: flex;
   gap: 0.6rem;
   margin: 0.1rem 0 0 1.7rem;
+  min-width: 0;
 }
 
 .agent:hover {
@@ -316,7 +321,7 @@ body {
 }
 
 .agent__status,
-.agent__slot,
+.agent__what,
 .agent__time {
   color: #8fb3c9;
   font-family: 'SFMono-Regular', Consolas, monospace;
@@ -440,6 +445,94 @@ body {
   width: 1.4rem;
 }
 
+/* --- Activity -------------------------------------------------------- */
+
+/* The activity is a disclosure like the legend: closed, it is only a
+   line, so it cannot push the agent list out of the panel. */
+.activity {
+  flex: 0 0 auto;
+  border-bottom: 1px solid #1d3a52;
+  font-size: 12px;
+}
+
+.activity summary {
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  color: #8fb3c9;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+
+/* There are many events. They scroll in their own box instead of
+   pushing the agent list out of the panel. */
+.activity__body {
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 0 1rem 0.75rem;
+}
+
+.activity__note {
+  margin: 0.4rem 0 0;
+  color: #5c7d92;
+}
+
+.activity__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.activity__event {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 0.1rem 0.5rem;
+  align-items: baseline;
+  padding: 0.25rem 0;
+  border-top: 1px solid #12293a;
+}
+
+.activity__time {
+  color: #5c7d92;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 10px;
+}
+
+.activity__agent {
+  color: #dff2ff;
+  overflow-wrap: anywhere;
+}
+
+.activity__what {
+  color: #7fc7e8;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+/* The detail says more than the line can hold: it is cut, and the whole
+   of it is in the journal. */
+.activity__detail {
+  grid-column: 2;
+  color: #8fb3c9;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The health of the backend. It is only there when there is something to
+   say, so it is worth reading when it shows up. */
+.activity__health {
+  margin: 0.5rem 0 0;
+  padding-top: 0.4rem;
+  border-top: 1px solid #1d3a52;
+  color: #d8b25a;
+  font-size: 11px;
+}
+
 /* --- Inspector ------------------------------------------------------ */
 
 .inspector {
@@ -538,8 +631,13 @@ body {
     flex-basis: 260px;
   }
 
-  .agent__slot {
-    display: none;
+  /* The description is the most useful thing in the row, so it stays —
+     it is the text that tells two agents apart. */
+  .agent__what {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 }
 

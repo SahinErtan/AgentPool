@@ -6,6 +6,7 @@ import { useStore } from '../state/useStore';
 import { keyAction, nextSelection } from './keyboard';
 import { useTick } from './useTick';
 import { spanDescription, workingSpan } from './timeline';
+import { cutAtWord, plainText } from './Inspector';
 
 const KIND_MARK: Record<string, string> = {
   session: '◆',
@@ -34,24 +35,56 @@ const KIND_FILTERS: { value: KindFilter; label: string }[] = [
 // characters that the list hides.
 export { matches };
 
+/** How long the second line of a row may be: the panel is narrow. */
+const ROW_TEXT_LIMIT = 40;
+
 /**
- * What the agent is doing, in a few words.
+ * A detail that is only a path is a folder, not a description.
  *
- * The slot says where the agent is; the tool says what it is doing. The
- * tool is the more useful of the two, so it wins when there is one.
+ * The path belongs to the "Folder" row of the inspector; as the second
+ * line of a row it would tell nothing about the agent.
  */
-function whatItIsDoing(agent: AgentView): string {
+function looksLikePath(text: string): boolean {
+  return text.startsWith('/') || text.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(text);
+}
+
+/**
+ * Which agent this is, in a few words.
+ *
+ * The label of a subagent is its kind, not its description: seven
+ * subagents can all be called "general-purpose". The description is what
+ * tells two of them apart, so it comes first. The tool says what the
+ * agent did last and the slot says where it is; neither of them says
+ * which agent it is, so they come after the description.
+ */
+export function rowDescription(agent: AgentView): string {
+  const detail = agent.detail ? plainText(agent.detail) : '';
+  if (detail && !looksLikePath(detail)) {
+    return cutAtWord(detail, ROW_TEXT_LIMIT);
+  }
   const withTool = (agent.events ?? []).filter((event) => event.tool);
   const lastTool = withTool.length > 0 ? withTool[withTool.length - 1].tool : agent.tool_name;
   if (lastTool) return lastTool;
   const slot = agent.presentation?.slot;
   if (slot) return String(slot);
-  const detail = agent.detail;
-  if (detail) {
-    const oneLine = detail.replace(/\s+/g, ' ').trim();
-    return oneLine.length > 28 ? `${oneLine.slice(0, 27)}…` : oneLine;
-  }
   return '—';
+}
+
+/**
+ * What a screen reader says for the row.
+ *
+ * It has to say which agent this is: the label alone is the kind of the
+ * agent, and seven rows can share it.
+ */
+export function rowAccessibleName(agent: AgentView, now: number): string {
+  return [
+    agent.label,
+    agent.status,
+    rowDescription(agent),
+    elapsed(agent.started_at ?? agent.created_at, now),
+  ]
+    .filter(Boolean)
+    .join(', ');
 }
 
 function elapsed(from: number | null, now: number): string {
@@ -185,19 +218,16 @@ export function AgentList() {
       >
         {list.map((agent) => {
           const span = workingSpan(agent.started_at, agent.finished_at, now);
+          const description = rowDescription(agent);
           return (
             <li
               key={agent.id}
               role="option"
               aria-selected={agent.id === selectedId}
-              aria-label={[
-                agent.label,
-                agent.status,
-                whatItIsDoing(agent),
-                elapsed(agent.started_at ?? agent.created_at, now),
-              ]
-                .filter(Boolean)
-                .join(', ')}
+              aria-label={rowAccessibleName(agent, now)}
+              // The full detail stays reachable on hover: the second line
+              // of the row is cut to fit the panel.
+              title={agent.detail ? plainText(agent.detail) : undefined}
               // Only the row the keyboard is on is in the Tab order: that is
               // how a list is walked with the arrow keys.
               tabIndex={agent.id === cursorId ? 0 : -1}
@@ -231,7 +261,10 @@ export function AgentList() {
               </div>
               <div className="agent__meta">
                 <span className="agent__status">{agent.status}</span>
-                <span className="agent__slot">{whatItIsDoing(agent)}</span>
+                {/* The second line says which agent this is, not only
+                    where it is. The class name is the old one; the
+                    styles of it are not mine to change. */}
+                <span className="agent__what">{description}</span>
               </div>
               {span ? (
                 <div
@@ -265,7 +298,7 @@ export function AgentList() {
             </div>
             <div className="agent__meta">
               <span className="agent__status">{entry.status}</span>
-              <span className="agent__slot">left the pool</span>
+              <span className="agent__what">left the pool</span>
             </div>
           </li>
         ))}
