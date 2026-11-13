@@ -41,3 +41,30 @@ export function workingSpan(
     width: ((end - start) / TIMELINE_WINDOW_S) * 100,
   };
 }
+
+/**
+ * A sentence about the bar, for the title and for the screen reader.
+ *
+ * The bar is a piece of the last fifteen minutes, not a progress bar, so
+ * it says when the agent was busy rather than how far along it is.
+ */
+export function spanDescription(
+  startedAt: number | null,
+  finishedAt: number | null,
+  now: number,
+): string {
+  if (!startedAt) return '';
+  const nowS = now / 1000;
+  const end = Math.min(finishedAt ?? nowS, nowS);
+  const start = Math.max(startedAt, nowS - TIMELINE_WINDOW_S);
+  if (end <= start) return 'Not working in the last fifteen minutes.';
+  const from = new Date(start * 1000).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const to = new Date(end * 1000).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `Working from ${from} to ${to}, in the last fifteen minutes.`;
+}

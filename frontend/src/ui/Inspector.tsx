@@ -18,6 +18,35 @@ function formatDuration(from: number | null, to: number | null): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/**
+ * The prompt of an agent is written in markdown, and the panel shows it
+ * as plain text: the stars and the backticks are noise here.
+ */
+function plainText(value: string): string {
+  return value
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Where the agent is: the presentation says so, but an agent that is on
+ * its way out has no slot any more while its route still knows.
+ */
+function slotOf(agent: AgentView, props: Record<string, unknown>): string {
+  const slot = agent.presentation?.slot;
+  if (slot) return String(slot);
+  const lounger = props.lounger;
+  if (lounger !== null && lounger !== undefined) return `lounger:${lounger}`;
+  const lane = props.lane;
+  if (lane !== null && lane !== undefined) return `lane:${lane}`;
+  const waiting = props.waiting;
+  if (waiting !== null && waiting !== undefined) return `waiting:${waiting}`;
+  return '—';
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="inspector__row">
@@ -95,11 +124,11 @@ export function Inspector() {
         <Row label="Kind" value={agent.kind} />
         <Row label="Status" value={agent.status} />
         <Row label="Scene" value={agent.scene} />
-        <Row label="Slot" value={agent.presentation.slot ?? '—'} />
+        <Row label="Slot" value={slotOf(agent, props)} />
         <Row label="Session" value={agent.session_id ?? '—'} />
         <Row label="Parent" value={agent.parent_id ?? '—'} />
         <Row label="Type" value={agent.subagent_type ?? agent.tool_name ?? '—'} />
-        <Row label="Detail" value={agent.detail ?? '—'} />
+        <Row label="Detail" value={agent.detail ? plainText(agent.detail) : '—'} />
         <Row label="Folder" value={agent.cwd ?? '—'} />
         <Row label="Route" value={String(props.route ?? '—')} />
         <Row label="From → to" value={`${props.from ?? '—'} → ${props.to ?? '—'}`} />

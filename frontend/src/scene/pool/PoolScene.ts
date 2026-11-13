@@ -18,6 +18,7 @@ import { damp } from '../characters/math';
 import { specFor, type CharacterSpec, type Role } from '../characters/spec';
 import type { AgentView } from '../../net/types';
 import { acknowledgeExit } from '../../net/ws';
+import { matches } from '../../state/filter';
 import { store } from '../../state/store';
 import {
   cameraLeftFor,
@@ -75,6 +76,10 @@ type Desired =
 
 interface Character {
   id: string;
+  /** The agent it stands for: the filter needs to know what it is. */
+  agent: AgentView;
+  /** Whether the filter hides it, so the pool dims it. */
+  dimmed: boolean;
   spec: CharacterSpec;
   rig: Rig;
   under: Rig | null;
@@ -439,6 +444,7 @@ export class PoolScene {
           poseFor(character.state),
         );
       }
+      character.agent = agent;
       this.applyPresentation(character, agent);
       this.noticeStatus(agent);
     }
@@ -490,6 +496,25 @@ export class PoolScene {
     }
   }
 
+  /**
+   * Where a new character starts: at the gate, after the ones that are
+   * already there.
+   *
+   * Two characters on the same spot cannot tell which of them is in
+   * front, so they queue up at the gate instead of walking into the pool.
+   * The gate is a queue, like the queue at the gate of the pool.
+   */
+  private spawnX(): number {
+    const gate = this.layout.gate;
+    let waiting = 0;
+    for (const other of this.characters.values()) {
+      if (other.entered) continue;
+      if (Math.abs(other.x - gate.x) > this.layout.characterHeight * 1.6) continue;
+      waiting += 1;
+    }
+    return gate.x + waiting * this.layout.characterHeight * 0.34;
+  }
+
   private createCharacter(agent: AgentView): Character {
     const role: Role =
       agent.kind === 'session'
@@ -524,6 +549,8 @@ export class PoolScene {
 
     return {
       id: agent.id,
+      agent,
+      dimmed: false,
       spec,
       rig,
       under: null,
@@ -539,7 +566,7 @@ export class PoolScene {
       exited: false,
       exitTarget: 'lounger:0',
       target: null,
-      x: this.layout.gate.x,
+      x: this.spawnX(),
       y: this.layout.deckY,
       swimY: this.layout.surfaceY,
       facing: 1,
@@ -664,9 +691,30 @@ export class PoolScene {
    * scene reads as one picture instead of bright people on a dark deck.
    */
   private applyLight(character: Character): void {
-    const tint = mixColour(0xffffff, 0x6f7f9c, 1 - this.palette.light);
+    const light = mixColour(0xffffff, 0x6f7f9c, 1 - this.palette.light);
+    // A character the filter hides goes into the shade, so that the pool
+    // and the list say the same thing.
+    const tint = character.dimmed ? mixColour(light, 0x0a1620, 0.55) : light;
     character.rig.root.tint = tint;
     if (character.under) character.under.root.tint = tint;
+  }
+
+  /**
+   * Dim the characters the list hides.
+   *
+   * The filter narrows the list. Without this the pool would still show
+   * every character, and the person looking for the working one would
+   * have to read the labels.
+   */
+  private updateFilter(): void {
+    const filter = store.get().filter;
+    const filtering = filter.status !== 'all' || filter.kind !== 'all';
+    for (const character of this.characters.values()) {
+      const dimmed = filtering && !matches(character.agent, filter);
+      if (dimmed === character.dimmed) continue;
+      character.dimmed = dimmed;
+      this.applyLight(character);
+    }
   }
 
   /**
@@ -824,6 +872,8 @@ export class PoolScene {
     // The clock of the animation is taken once for the whole frame, so
     // every character breathes at the same moment.
     const animTime = performance.now() / 1000;
+
+    this.updateFilter();
 
     for (const character of this.characters.values()) {
       this.updateState(character, dt);

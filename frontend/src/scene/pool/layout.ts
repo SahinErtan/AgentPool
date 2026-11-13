@@ -77,7 +77,25 @@ export function computeLayout(
   const w = Math.max(320, width);
   const h = Math.max(240, height);
 
-  const characterHeight = Math.round(Math.min(Math.max(h * 0.16, 64), 128));
+  // The character is as big as the height of the window allows, but it
+  // also has to fit on the deck: there is one lounger per character and
+  // the characters may not lie on top of each other. On a narrow window
+  // the character is the thing that has to give way.
+  const deckSpace = (charHeight: number): number => {
+    const gate = Math.round(charHeight * 0.9);
+    const left = gate + Math.round(charHeight * 0.6);
+    const right = w - Math.round(charHeight * 0.5);
+    const ladder = Math.round(charHeight * 0.34);
+    const start = left + Math.round(charHeight * 0.25);
+    const end = right - ladder - Math.round(charHeight * 0.4);
+    return Math.max(0, end - start);
+  };
+  let characterHeight = Math.round(Math.min(Math.max(h * 0.16, 64), 128));
+  const perLounger = deckSpace(characterHeight) / Math.max(1, loungers_);
+  // A character lies on its side, so it is about 0.62 of its height wide.
+  const fits = Math.floor(perLounger / 0.62);
+  characterHeight = Math.max(40, Math.min(characterHeight, fits));
+
   const deckY = Math.round(h * 0.4);
   // The deck is a terrace: the characters stand on the upper edge, and the
   // strip between them and the water is the poolside floor. It keeps the

@@ -361,12 +361,12 @@ body {
   display: block;
 }
 
+/* The panel is a column of its own, not a lid on the picture: the canvas
+   is drawn in the space that is actually visible, so the right end of the
+   pool is not hidden under the panel. */
 .stage__overlay {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 320px;
+  position: relative;
+  flex: 0 0 320px;
   display: flex;
   flex-direction: column;
   background: #08131c;
@@ -389,6 +389,13 @@ body {
   flex: 0 0 auto;
   border-bottom: 1px solid #1d3a52;
   font-size: 12px;
+}
+
+/* The legend is a lot of text. It scrolls instead of pushing the agent
+   list out of the panel. */
+.legend[open] {
+  max-height: 40%;
+  overflow-y: auto;
 }
 
 .legend summary {
@@ -521,7 +528,7 @@ body {
 
 @media (max-width: 900px) {
   .stage__overlay {
-    width: 260px;
+    flex-basis: 260px;
   }
 
   .agent__slot {
@@ -532,6 +539,7 @@ body {
 @media (max-width: 640px) {
   .stage__overlay {
     position: static;
+    flex: 0 0 auto;
     width: 100%;
     max-height: 45%;
     border-left: none;

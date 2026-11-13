@@ -44,6 +44,8 @@ function clearanceAheadSlow(
 ): number {
   if (direction === 0) return Number.POSITIVE_INFINITY;
   let nearest = Number.POSITIVE_INFINITY;
+  let onTop = false;
+  let yields = false;
 
   for (const other of agents) {
     if (other.id === agent.id) continue;
@@ -55,11 +57,18 @@ function clearanceAheadSlow(
     const ahead = (other.x - agent.x) * direction;
     if (ahead > 0.5) {
       nearest = Math.min(nearest, Math.max(0, ahead - gap));
-    } else if (Math.abs(ahead) <= 2 && other.id > agent.id) {
-      nearest = 0;
+    }
+    // Standing on the same spot is not in front: it is the same place.
+    if (Math.abs(ahead) <= 2) {
+      onTop = true;
+      if (ahead <= 0.5 && other.id > agent.id) yields = true;
     }
   }
 
+  // The higher id yields, so the pair never deadlocks.
+  if (yields) return 0;
+  // The other one yields: this character is free to move.
+  if (onTop) return Number.POSITIVE_INFINITY;
   return nearest;
 }
 
@@ -186,6 +195,36 @@ test('two characters on top of each other do not deadlock', () => {
 
   assert.equal(index.clearanceAhead(agents[0], 1, GAP, TOLERANCE), 0);
   assert.equal(index.clearanceAhead(agents[1], 1, GAP, TOLERANCE), Number.POSITIVE_INFINITY);
+});
+
+test('two characters a hair apart do not deadlock either', () => {
+  // Two pixels apart is still the same place. The one that is further
+  // forward leads and the one behind follows it, so neither of them may
+  // be told to stand still: the queue at the gate has to move.
+  const agents = [makeAgent('aaa', 200, 300, 1), makeAgent('bbb', 202, 300, 1)];
+  const index = new ClearanceIndex(TOLERANCE);
+  for (const agent of agents) index.add(agent);
+
+  assert.equal(index.clearanceAhead(agents[0], 1, GAP, TOLERANCE), Number.POSITIVE_INFINITY);
+  assert.equal(index.clearanceAhead(agents[1], 1, GAP, TOLERANCE), Number.POSITIVE_INFINITY);
+});
+
+test('a crowd on one spot does not deadlock', () => {
+  // Four characters on the same spot: only the one with the highest id
+  // may move, and it is enough — the others follow it.
+  const agents = [
+    makeAgent('aaa', 200, 300, 1),
+    makeAgent('bbb', 200, 300, 1),
+    makeAgent('ccc', 200, 300, 1),
+    makeAgent('ddd', 200, 300, 1),
+  ];
+  const index = new ClearanceIndex(TOLERANCE);
+  for (const agent of agents) index.add(agent);
+
+  assert.equal(index.clearanceAhead(agents[0], 1, GAP, TOLERANCE), 0);
+  assert.equal(index.clearanceAhead(agents[1], 1, GAP, TOLERANCE), 0);
+  assert.equal(index.clearanceAhead(agents[2], 1, GAP, TOLERANCE), 0);
+  assert.equal(index.clearanceAhead(agents[3], 1, GAP, TOLERANCE), Number.POSITIVE_INFINITY);
 });
 
 test('a character that has nowhere to go does not block the queue', () => {

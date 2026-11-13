@@ -1,10 +1,11 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { matches } from '../state/filter';
 import type { AgentView } from '../net/types';
-import { store, type Filter, type KindFilter, type StatusFilter } from '../state/store';
+import { store, type KindFilter, type StatusFilter } from '../state/store';
 import { useStore } from '../state/useStore';
 import { keyAction, nextSelection } from './keyboard';
 import { useTick } from './useTick';
-import { workingSpan } from './timeline';
+import { spanDescription, workingSpan } from './timeline';
 
 const KIND_MARK: Record<string, string> = {
   session: '◆',
@@ -29,18 +30,28 @@ const KIND_FILTERS: { value: KindFilter; label: string }[] = [
 ];
 
 /** Whether an agent belongs in the list under the current filter. */
-export function matches(agent: AgentView, filter: Filter): boolean {
-  if (filter.status === 'working' && agent.status !== 'working') return false;
-  if (filter.status === 'idle' && agent.status !== 'idle') return false;
-  if (
-    filter.status === 'done' &&
-    agent.status !== 'finished' &&
-    agent.status !== 'leaving'
-  ) {
-    return false;
+// The rule itself lives with the state, because the scene dims the
+// characters that the list hides.
+export { matches };
+
+/**
+ * What the agent is doing, in a few words.
+ *
+ * The slot says where the agent is; the tool says what it is doing. The
+ * tool is the more useful of the two, so it wins when there is one.
+ */
+function whatItIsDoing(agent: AgentView): string {
+  const withTool = (agent.events ?? []).filter((event) => event.tool);
+  const lastTool = withTool.length > 0 ? withTool[withTool.length - 1].tool : agent.tool_name;
+  if (lastTool) return lastTool;
+  const slot = agent.presentation?.slot;
+  if (slot) return String(slot);
+  const detail = agent.detail;
+  if (detail) {
+    const oneLine = detail.replace(/\s+/g, ' ').trim();
+    return oneLine.length > 28 ? `${oneLine.slice(0, 27)}…` : oneLine;
   }
-  if (filter.kind !== 'all' && agent.kind !== filter.kind) return false;
-  return true;
+  return '—';
 }
 
 function elapsed(from: number | null, now: number): string {
@@ -201,13 +212,14 @@ export function AgentList() {
               </div>
               <div className="agent__meta">
                 <span className="agent__status">{agent.status}</span>
-                <span className="agent__slot">{agent.presentation.slot ?? '—'}</span>
+                <span className="agent__slot">{whatItIsDoing(agent)}</span>
               </div>
               {span ? (
                 <div
                   className="agent__timeline"
-                  title="The last fifteen minutes"
-                  aria-hidden="true"
+                  title={spanDescription(agent.started_at, agent.finished_at, now)}
+                  role="img"
+                  aria-label={spanDescription(agent.started_at, agent.finished_at, now)}
                 >
                   <div
                     className="agent__timeline-fill"

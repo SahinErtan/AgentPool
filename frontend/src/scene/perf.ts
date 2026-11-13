@@ -149,17 +149,13 @@ export class ClearanceIndex {
       if (ahead !== Number.POSITIVE_INFINITY) break;
     }
 
-    let nearest =
-      ahead === Number.POSITIVE_INFINITY
-        ? Number.POSITIVE_INFINITY
-        : Math.max(0, ahead - gap);
-
-    // Exactly on top of each other: the higher id yields, so the pair never
-    // deadlocks. The window is the two pixels around the character.
-    const from = direction > 0 ? agent.x - 2 : agent.x - 0.5;
-    const to = direction > 0 ? agent.x + 0.5 : agent.x + 2;
-    const first = Math.floor(from / cell);
-    const last = Math.floor(to / cell);
+    // The same spot: the two pixels around the character. Standing on the
+    // same spot is not "in front", it is the same place, and the two of
+    // them must not lock each other. The window is walked exactly, so a
+    // character on the edge of a column is still found.
+    const first = Math.floor((agent.x - 2) / cell);
+    const last = Math.floor((agent.x + 2) / cell);
+    let onTop = false;
     for (let c = first; c <= last; c += 1) {
       const column = this.columns.get(c);
       if (!column) continue;
@@ -169,12 +165,22 @@ export class ClearanceIndex {
         for (const other of bucket) {
           if (!this.blocks(other, agent, direction, tolerance)) continue;
           const d = (other.x - agent.x) * direction;
-          if (d <= 0.5 && Math.abs(d) <= 2 && other.id > agent.id) return 0;
+          if (Math.abs(d) > 2) continue;
+          onTop = true;
+          // The higher id yields, so the pair never deadlocks.
+          if (d <= 0.5 && other.id > agent.id) return 0;
         }
       }
     }
 
-    return nearest;
+    // The pair stands on the same spot: the one that yields is the one
+    // with the higher id, so the other one is free to move. Without this
+    // both of them wait for each other and the queue never moves again.
+    if (onTop) return Number.POSITIVE_INFINITY;
+
+    return ahead === Number.POSITIVE_INFINITY
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, ahead - gap);
   }
 
   /** True when the other character stands in the way of this one. */
