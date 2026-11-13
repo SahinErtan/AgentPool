@@ -304,6 +304,15 @@ The parts with no tests are the parts that break: the WebSocket client
 ingest endpoint, the state endpoints and the store. A registry-and-scene
 test would have caught the ghost lanes on the first day.
 
+## Sprint 15 — what the observer found (to do)
+
+The observer that watched the dashboard while the work was being done
+found the two bugs that no test had caught: the characters stood at the
+gate and never moved, and the swimmers were drawn above the water. Both
+are fixed. What is left is what it found that is not a bug but a
+missing thing — the list of the second round is added here when it
+arrives.
+
 ## Sprint 16 — packaging (parked)
 
 The project is finished and works, so this is a deliberate later step. The
