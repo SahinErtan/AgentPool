@@ -145,11 +145,14 @@ grow: it still ends at the gate and at the ladder. The bottom of the world
 stays where it is, so the floor of the pool does not move when the camera
 zooms.
 
-## Sprint 12 — the pool that keeps up
+## Sprint 12 — the pool that keeps up (done)
 
 **The scene and the registry must agree with reality.** The two of them are
 told different stories by different code paths, and where they disagree the
 pool keeps a body that is not there any more.
+
+All four of the bugs below were measured before they were fixed and
+measured again afterwards.
 
 ### 13. The sweeper never tells the scene that an agent is gone — measured
 
@@ -217,7 +220,7 @@ retried — the network hiccups, the client gives up and sends it again — is
 applied twice, and the event count grows by two. The events carry an id;
 they should be remembered and skipped the second time.
 
-## Sprint 13 — the pool you can reach and script
+## Sprint 13 — the pool you can reach and script (done)
 
 ### 19. The dashboard must survive a lost connection
 
@@ -277,7 +280,7 @@ session.
 The selection lives in the browser's memory, so an agent cannot be linked,
 bookmarked or sent to somebody else. `?agent=<id>` would do it.
 
-## Sprint 14 — the pool that is fast and reachable
+## Sprint 14 — the pool that is fast and reachable (done)
 
 ### 27. The keyboard and the screen reader
 
@@ -301,7 +304,7 @@ The parts with no tests are the parts that break: the WebSocket client
 ingest endpoint, the state endpoints and the store. A registry-and-scene
 test would have caught the ghost lanes on the first day.
 
-## Sprint 15 — packaging (parked)
+## Sprint 16 — packaging (parked)
 
 The project is finished and works, so this is a deliberate later step. The
 user decided on 2026-11-10 to hold off until they push the project to
@@ -337,6 +340,14 @@ open yet is a chore.
 
 ## What comes next
 
-Sprint 12, the pool that keeps up — starting with the two ghost-lane bugs,
-because both of them were measured and both of them make the pool wrong
-rather than merely ugly.
+The packaging, and whatever the observer of the dashboard found. The
+three correctness sprints are done: the pool keeps up with reality, it
+can be reached and scripted, and it is fast and reachable with the
+keyboard.
+
+The observer that watched the dashboard while the work was being done
+found the two bugs that the tests did not: the characters stood at the
+gate and never moved, because they were all born on the same spot and
+each of them told the other to stand still; and the swimmers were drawn
+three hundred pixels above the water, because the height a swimmer swims
+at was worked out once and never again.

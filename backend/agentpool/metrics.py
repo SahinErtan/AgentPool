@@ -22,6 +22,10 @@ class Counters:
     duplicates: int = 0
     refused: int = 0
     failed: int = 0
+    #: The background loops: the sweeper, the reconciler, the journal.
+    background_failed: int = 0
+    background_error: Optional[str] = None
+    background_error_at: Optional[float] = None
     last_error: Optional[str] = None
     last_error_at: Optional[float] = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -49,6 +53,21 @@ class Counters:
             self.failed += 1
             self.last_error = reason
             self.last_error_at = time.time()
+
+    def fail_background(self, reason: str) -> None:
+        """A background loop failed: the sweeper, the reconciler, the journal."""
+        with self._lock:
+            self.background_failed += 1
+            self.background_error = reason
+            self.background_error_at = time.time()
+
+    def background_as_dict(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "failed": self.background_failed,
+                "last_error": self.background_error,
+                "last_error_at": self.background_error_at,
+            }
 
     def as_dict(self) -> Dict[str, Any]:
         with self._lock:

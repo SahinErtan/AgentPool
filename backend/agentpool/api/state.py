@@ -128,6 +128,7 @@ def create_metrics_router(broker, hub, registry, counters=None) -> APIRouter:
         }
         if counters is not None:
             payload["ingest"] = counters.as_dict()
+            payload["background"] = counters.background_as_dict()
         return payload
 
     return router

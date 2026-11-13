@@ -146,7 +146,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await asyncio.sleep(10)
             try:
                 await sweep_once(registry, scene, hub)
-            except Exception:
+            except Exception as error:
+                # The error is counted as well as logged: a sweeper that
+                # broke an hour ago must not look like one that is working.
+                counters.fail_background(f"the sweeper failed: {error}")
                 log.exception("sweeper failed")
 
     async def reconciler() -> None:
@@ -179,7 +182,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                         "scene_payload": scene.describe(),
                     }
                 )
-            except Exception:
+            except Exception as error:
+                counters.fail_background(f"the reconciler failed: {error}")
                 log.exception("reconcile failed")
 
     @asynccontextmanager
@@ -187,7 +191,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         await hub.start()
         try:
             journal.prune()
-        except Exception:
+        except Exception as error:
+            counters.fail_background(f"the journal could not be pruned: {error}")
             log.exception("the journal could not be pruned")
 
         # The browser may drop an agent when its character walks out of the
@@ -199,7 +204,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             recovered = reconcile(registry, settings.claude_dir)
             if recovered:
                 log.info("recovered %s agents from disk", recovered)
-        except Exception:
+        except Exception as error:
+            counters.fail_background(f"the reconciliation failed: {error}")
             log.exception("reconciliation failed")
 
         # The journal holds what happened while the backend was down. It is
