@@ -304,7 +304,7 @@ The parts with no tests are the parts that break: the WebSocket client
 ingest endpoint, the state endpoints and the store. A registry-and-scene
 test would have caught the ghost lanes on the first day.
 
-## Sprint 15 — what the observer found (to do)
+## Sprint 15 — what the observer found
 
 An agent watched the dashboard while the work was being done and reported
 what it saw, twice. The first round found the two bugs that no test had
@@ -314,15 +314,19 @@ still; and the swimmers were drawn above the water, because the height a
 swimmer swims at was worked out once and never again.
 
 The second round confirmed the fixes and found the rest. Most of it is
-fixed. What is left:
+fixed. What is left, and how it is being done:
 
 ### 29. There is no history to look back at
 
 `/api/history` and `/api/metrics` exist, and nothing in the dashboard
 calls them. There is no view of what happened: who finished, when, and
-what the backend did while it was up. The panel keeps the agents that
-left in its memory for ten minutes — that memory is the beginning of a
-history view, and the journal is where the rest of it is.
+what the backend did while it was up.
+
+**How:** the panel gets an "Activity" section — the last events from
+`/api/history`, with the health of the backend underneath them (the
+deliveries, the refusals, the dropped messages, the last error). It is a
+`<details>`, so it takes no room until it is opened, and it stops asking
+when the tab is hidden.
 
 ### 30. Two agents with the same name are the same row
 
@@ -330,25 +334,38 @@ Seven rows may say "general-purpose" and three may say
 "code-reviewer", and nothing tells them apart. The name of a
 subagent is its kind, not its description — the description is in the
 prompt, and the prompt is what makes one subagent different from
-another. The list should show a few words of it.
+another.
+
+**How:** the second line of a row says the description of the agent when
+it has one, the tool it used when it does not, and the slot when there is
+neither. A detail that is only a folder path is not a description: that
+is what the "Folder" row of the inspector is for.
 
 ### 31. The counts are said twice
 
 The top bar says "2 working / 4 total" and the summary says "2 working 2
 idle 0 done". One of them is enough.
 
+**How:** the top bar keeps the name, the connection and the scene; the
+panel owns the numbers.
+
 ### 32. The pool is a big flat rectangle
 
 A hard seam runs across the water where the deep part begins, and with
-one swimmer most of the picture is empty water. The water could have a
-floor that is seen through it, and the deep end could be deeper.
+one swimmer most of the picture is empty water.
+
+**How:** the depth of the water is drawn as a gradient rather than as two
+rectangles, and the floor — the lane lines, the depth markers — is seen
+through it.
 
 ### 33. On a phone the characters are too small to read
 
 At 390 pixels the characters are 25 to 30 pixels tall and fuse into a
-strip, and the label above them is bigger than the figure it names. The
-phone layout needs its own drawing: fewer characters, bigger, and no
-label at all.
+strip, and the label above them is bigger than the figure it names.
+
+**How:** fewer characters and bigger ones on a narrow canvas, and no
+labels at all — the list beside the pool is the text version of the same
+thing.
 
 ## Sprint 16 — packaging (parked)
 
