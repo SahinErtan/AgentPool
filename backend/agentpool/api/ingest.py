@@ -113,25 +113,27 @@ def create_ingest_router(
 
     @router.post("/hooks/{event}")
     async def ingest(event: str, request: Request) -> Dict[str, Any]:
-        # A page in the browser may post to this port without asking.
-        # A delivery from another origin, or with a content type that a
-        # browser may send without a preflight, is not the hook.
+        # A page in the browser may post to this port without asking. A
+        # browser always says where it comes from, so the check is only
+        # made when there is an origin to check: the hook itself does not
+        # send one and must not be turned away.
         if counters is not None:
             counters.delivery()
         origin = request.headers.get("origin")
-        if not auth.origin_is_allowed(origin):
-            log.warning("refused a delivery from %s", origin)
-            if counters is not None:
-                counters.refuse(f"a delivery from {origin}")
-            return {"ok": True, "accepted": 0, "duplicates": 0}
-        if not auth.content_type_is_allowed(request.headers.get("content-type")):
-            log.warning(
-                "refused a delivery with the content type %s",
-                request.headers.get("content-type"),
-            )
-            if counters is not None:
-                counters.refuse("a delivery with the wrong content type")
-            return {"ok": True, "accepted": 0, "duplicates": 0}
+        if origin is not None:
+            if not auth.origin_is_allowed(origin):
+                log.warning("refused a delivery from %s", origin)
+                if counters is not None:
+                    counters.refuse(f"a delivery from {origin}")
+                return {"ok": True, "accepted": 0, "duplicates": 0}
+            if not auth.content_type_is_allowed(request.headers.get("content-type")):
+                log.warning(
+                    "refused a delivery with the content type %s",
+                    request.headers.get("content-type"),
+                )
+                if counters is not None:
+                    counters.refuse("a delivery with the wrong content type")
+                return {"ok": True, "accepted": 0, "duplicates": 0}
 
         try:
             payload = await request.json()

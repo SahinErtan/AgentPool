@@ -66,6 +66,7 @@ function elapsed(from: number | null, now: number): string {
 export function AgentList() {
   const {
     agents,
+    memory,
     selectedId,
     hoveredId,
     filter,
@@ -77,6 +78,17 @@ export function AgentList() {
   const list = [...agents.values()]
     .filter((agent) => matches(agent, filter))
     .sort((a, b) => a.id.localeCompare(b.id));
+
+  // The agents that are gone. A finished agent walks out of the scene and
+  // the backend forgets it, but the panel remembers it for a while — and
+  // the "done" filter is about those, not about an empty list.
+  const gone =
+    filter.status === 'done'
+      ? [...memory.entries()]
+          .filter(([, entry]) => entry.status === 'finished' || entry.status === 'leaving')
+          .filter(([, entry]) => filter.kind === 'all' || entry.kind === filter.kind)
+          .sort((a, b) => (b[1].finishedAt ?? 0) - (a[1].finishedAt ?? 0))
+      : [];
 
   const ids = list.map((agent) => agent.id);
   // The row that owns the Tab stop: the one the keyboard was on last, or
@@ -160,7 +172,7 @@ export function AgentList() {
         </select>
       </div>
 
-      {list.length === 0 ? (
+      {list.length === 0 && gone.length === 0 ? (
         <p className="empty">
           {agents.size === 0 ? 'No agents yet.' : 'Nothing matches the filter.'}
         </p>
@@ -178,7 +190,14 @@ export function AgentList() {
               key={agent.id}
               role="option"
               aria-selected={agent.id === selectedId}
-              aria-label={`${agent.label}, ${agent.status}`}
+              aria-label={[
+                agent.label,
+                agent.status,
+                whatItIsDoing(agent),
+                elapsed(agent.started_at ?? agent.created_at, now),
+              ]
+                .filter(Boolean)
+                .join(', ')}
               // Only the row the keyboard is on is in the Tab order: that is
               // how a list is walked with the arrow keys.
               tabIndex={agent.id === cursorId ? 0 : -1}
@@ -230,6 +249,26 @@ export function AgentList() {
             </li>
           );
         })}
+
+        {/* The agents that have left the pool. They are not there to be
+            picked, but they are what the "done" filter is about. */}
+        {gone.map(([id, entry]) => (
+          <li key={id} className="agent agent--gone" aria-disabled="true">
+            <div className="agent__main">
+              <span className="agent__mark" aria-hidden="true">
+                {KIND_MARK[entry.kind] ?? '·'}
+              </span>
+              <span className="agent__label">{entry.label}</span>
+              <span className="agent__time">
+                {entry.finishedAt ? elapsed(entry.finishedAt, now) : ''}
+              </span>
+            </div>
+            <div className="agent__meta">
+              <span className="agent__status">{entry.status}</span>
+              <span className="agent__slot">left the pool</span>
+            </div>
+          </li>
+        ))}
       </ul>
     </aside>
   );

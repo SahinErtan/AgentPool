@@ -309,6 +309,12 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* An agent that has left the pool: it is remembered, not there. */
+.agent--gone {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .agent__status,
 .agent__slot,
 .agent__time {
@@ -391,10 +397,10 @@ body {
   font-size: 12px;
 }
 
-/* The legend is a lot of text. It scrolls instead of pushing the agent
-   list out of the panel. */
-.legend[open] {
-  max-height: 40%;
+/* The legend is a lot of text. It scrolls in its own box instead of
+   pushing the agent list out of the panel. */
+.legend__body {
+  max-height: 32vh;
   overflow-y: auto;
 }
 
@@ -496,6 +502,7 @@ body {
 }
 
 .inspector__value {
+  overflow-wrap: anywhere;
   color: #dff2ff;
   word-break: break-word;
   font-family: 'SFMono-Regular', Consolas, monospace;
@@ -544,6 +551,19 @@ body {
     max-height: 45%;
     border-left: none;
     border-top: 1px solid #1d3a52;
+    /* On a phone the panel scrolls as a whole: the list and the
+       inspector are too small to have a scroll box each. */
+    overflow-y: auto;
+  }
+
+  .stage .agent-list {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .inspector {
+    max-height: none;
   }
 
   .stage {

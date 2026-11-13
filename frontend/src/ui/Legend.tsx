@@ -49,6 +49,9 @@ export function Legend() {
       <details>
         <summary>Legend</summary>
 
+        {/* The legend is a lot of text. It scrolls in its own box, so that
+            it cannot push the agent list out of the panel. */}
+        <div className="legend__body">
         <div className="legend__group">
           <h3>Agents</h3>
           <ul>
@@ -110,6 +113,7 @@ export function Legend() {
               </li>
             ))}
           </ul>
+        </div>
         </div>
       </details>
     </section>

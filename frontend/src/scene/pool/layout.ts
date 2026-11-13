@@ -92,8 +92,10 @@ export function computeLayout(
   };
   let characterHeight = Math.round(Math.min(Math.max(h * 0.16, 64), 128));
   const perLounger = deckSpace(characterHeight) / Math.max(1, loungers_);
-  // A character lies on its side, so it is about 0.62 of its height wide.
-  const fits = Math.floor(perLounger / 0.62);
+  // A character lies on its side, so it is as wide as it is tall: that is
+  // the width it needs on a lounger. Two of them that are too wide lie on
+  // top of each other, and then the pool is one brown lump.
+  const fits = Math.floor(perLounger / 1.3);
   characterHeight = Math.max(40, Math.min(characterHeight, fits));
 
   const deckY = Math.round(h * 0.4);

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { connectAgentSocket } from './net/ws';
+import type { ConnectionState } from './net/types';
 import { PoolCanvas } from './scene/pool/PoolCanvas';
 import { searchWithAgent, store } from './state/store';
 import { useStore } from './state/useStore';
@@ -11,8 +12,8 @@ import { Toast } from './ui/Toast';
 import { TopBar } from './ui/TopBar';
 
 export function App() {
-  const { connected, selectedId, agents, pendingAgentId } = useStore();
-  const wasConnected = useRef<boolean | null>(null);
+  const { connection, selectedId, agents, pendingAgentId } = useStore();
+  const wasConnection = useRef<ConnectionState | null>(null);
 
   useEffect(() => {
     const socket = connectAgentSocket();
@@ -20,19 +21,17 @@ export function App() {
   }, []);
 
   // Say it when the dashboard loses the backend, and when it gets it back.
+  // The first connection is not a return, so it says nothing.
   useEffect(() => {
-    if (wasConnected.current === null) {
-      wasConnected.current = connected;
-      return;
-    }
-    if (wasConnected.current === connected) return;
-    wasConnected.current = connected;
-    if (connected) {
+    const previous = wasConnection.current;
+    wasConnection.current = connection;
+    if (previous === null) return;
+    if (connection === 'live' && previous !== 'live' && previous !== 'connecting') {
       store.pushToast('The pool is back online.');
-    } else {
+    } else if (connection !== 'live' && previous === 'live') {
       store.pushToast('Lost the backend — the agents keep swimming.', 'warn');
     }
-  }, [connected]);
+  }, [connection]);
 
   // A link to an agent: ?agent=<id>. The agent may not be in the pool yet,
   // so the link waits until it shows up. An id that never shows up simply

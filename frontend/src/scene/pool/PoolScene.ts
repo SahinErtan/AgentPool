@@ -193,6 +193,8 @@ export class PoolScene {
   private rain = 0;
   /** The left edge of the view, in world coordinates. */
   private cameraLeft = 0;
+  /** Whether the camera has ever been where it belongs. */
+  private cameraReady = false;
   /** How much the camera zooms in. */
   private cameraZoom = 1;
   private time = 0;
@@ -254,9 +256,11 @@ export class PoolScene {
     this.world.addChild(this.steam.container, this.sleepZ.container, this.bubble.container);
     this.fxLayer.addChild(this.hoverRing);
     // The foam line is clipped to the water, so the part of it that
-    // travels past the edge of the pool stays out of the way.
+    // travels past the edge of the pool stays out of the way. The mask
+    // lives in the same layer as the foam: PixiJS wants the mask and the
+    // thing it masks to have a common ancestor, and complains otherwise.
     this.foam.mask = this.foamMask;
-    this.world.addChild(this.foamMask);
+    this.fxLayer.addChild(this.foamMask);
 
     this.buildLayers();
     this.bindPointer();
@@ -937,9 +941,14 @@ export class PoolScene {
         mark.y !== markedCharacter.y ||
         mark.span !== span
       ) {
+        // The ring follows the figure: a character that lies down is much
+        // wider than one that stands, and a ring that does not fit is
+        // bigger than the thing it names.
+        const bounds = markedCharacter.rig.root.getBounds();
+        const halfWidth = Math.max(span * 0.42, bounds.width / 2 + 6);
         this.hoverRing.clear();
         this.hoverRing
-          .ellipse(markedCharacter.x, markedCharacter.y, span * 0.42, span * 0.11)
+          .ellipse(markedCharacter.x, markedCharacter.y, halfWidth, span * 0.11)
           .stroke({ color: 0x52d273, width: 2, alpha: 0.9 });
         this.hoverMark = {
           id: markedCharacter.id,
@@ -1234,10 +1243,18 @@ export class PoolScene {
     const focus = character ? character.x : layout.width / 2;
     const zoom = character ? CAMERA_ZOOM : 1;
 
-    this.cameraZoom = damp(this.cameraZoom, zoom, CAMERA_SPEED, dt * 1000);
-
-    const target = cameraLeftFor(layout, focus, this.cameraZoom);
-    this.cameraLeft = damp(this.cameraLeft, target, CAMERA_SPEED, dt * 1000);
+    // The first frame is not a move: the camera starts where it belongs.
+    // Otherwise the whole pool slides across the screen when the dashboard
+    // opens, and the pool is briefly wider than the window.
+    if (!this.cameraReady) {
+      this.cameraReady = true;
+      this.cameraZoom = zoom;
+      this.cameraLeft = cameraLeftFor(layout, focus, zoom);
+    } else {
+      this.cameraZoom = damp(this.cameraZoom, zoom, CAMERA_SPEED, dt * 1000);
+      const target = cameraLeftFor(layout, focus, this.cameraZoom);
+      this.cameraLeft = damp(this.cameraLeft, target, CAMERA_SPEED, dt * 1000);
+    }
 
     this.world.scale.set(this.cameraZoom);
     this.world.position.set(

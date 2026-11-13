@@ -6,6 +6,7 @@
  */
 
 import type {
+  AgentKind,
   AgentStatus,
   AgentView,
   ConnectionState,
@@ -34,6 +35,9 @@ export interface AgentMemory {
   status: AgentStatus;
   finishedAt: number | null;
   lastEventAt: number;
+  /** The name of the agent, so that it can still be named when it is gone. */
+  label: string;
+  kind: AgentKind;
 }
 
 /**
@@ -273,6 +277,8 @@ function remember(
       status: agent.status,
       finishedAt: agent.finished_at,
       lastEventAt: agent.last_event_at,
+      label: agent.label,
+      kind: agent.kind,
     });
   }
 

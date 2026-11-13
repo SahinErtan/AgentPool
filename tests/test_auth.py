@@ -114,7 +114,8 @@ def test_a_page_cannot_put_a_character_that_does_not_exist_in_the_pool():
     assert refused.json() == {"ok": True, "accepted": 0, "duplicates": 0}
     assert registry.snapshot() == []
 
-    # The hook itself can.
+    # The hook itself can: it does not come from a browser, so it does not
+    # say where it comes from.
     allowed = client.post(
         "/hooks/SubagentStart",
         json=payload,
@@ -122,6 +123,16 @@ def test_a_page_cannot_put_a_character_that_does_not_exist_in_the_pool():
     )
     assert allowed.json()["accepted"] > 0
     assert len(registry.snapshot()) == 1
+
+    # And it can even come with a content type that a browser may send
+    # without a preflight, because a browser always says where it is from
+    # and the hook does not.
+    plain = client.post(
+        "/hooks/SubagentStart",
+        json=payload,
+        headers={"content-type": "text/plain"},
+    )
+    assert plain.json()["accepted"] > 0
 
 
 def test_the_notification_never_raises():
