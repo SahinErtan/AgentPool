@@ -126,13 +126,15 @@ def test_a_page_cannot_put_a_character_that_does_not_exist_in_the_pool():
 
     # And it can even come with a content type that a browser may send
     # without a preflight, because a browser always says where it is from
-    # and the hook does not.
+    # and the hook does not. (A different agent, so that it is not simply
+    # the same delivery twice.)
     plain = client.post(
         "/hooks/SubagentStart",
-        json=payload,
+        json=dict(payload, agent_id="agent-plain"),
         headers={"content-type": "text/plain"},
     )
     assert plain.json()["accepted"] > 0
+    assert len(registry.snapshot()) == 2
 
 
 def test_the_notification_never_raises():
