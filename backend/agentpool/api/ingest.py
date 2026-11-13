@@ -167,7 +167,7 @@ def create_ingest_router(
                 journal.append(item)
                 if isinstance(item, AgentEvent):
                     changed = registry.apply(item)
-                    await _dispatch(registry, broker, scene, item, changed)
+                    await _dispatch(registry, broker, scene, item, changed, settings)
                 elif isinstance(item, SessionEvent):
                     await scene.on_session_event(item)
                     broker.publish({"type": "session_event", "event": _session_dict(item)})
@@ -208,7 +208,7 @@ async def _announce(state, settings) -> None:
         log.debug("the notification failed", exc_info=True)
 
 
-async def _dispatch(registry, broker, scene, item: AgentEvent, changed) -> None:
+async def _dispatch(registry, broker, scene, item: AgentEvent, changed, settings=None) -> None:
     """Let the scene react, then publish the resulting agent states."""
     if item.type == "spawned":
         for state in changed:
@@ -219,7 +219,12 @@ async def _dispatch(registry, broker, scene, item: AgentEvent, changed) -> None:
     elif item.type == "finished":
         for state in changed:
             await scene.on_agent_finished(state)
-            await _announce(state, settings)
+            # The notification is a courtesy: it must not break the event
+            # that tells the browser the agent is done.
+            try:
+                await _announce(state, settings)
+            except Exception:  # pragma: no cover - the pool does not break
+                log.debug("the announcement failed", exc_info=True)
     elif item.type == "removed":
         for state in changed:
             await scene.on_agent_removed(state.id)

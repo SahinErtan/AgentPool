@@ -422,6 +422,16 @@ one, and the one that came last moves into a lane that falls empty, so
 nobody swims in a crowded lane next to an empty one. A shared lane says
 how many swimmers it has: `lane:3 (2)`.
 
+### 38. A finished agent was never told to the browser — done
+
+The counters on the live pool said: one delivery had failed with
+`name 'settings' is not defined`. The announcement of a finished agent
+used a name it did not have, and the error took the whole event with it:
+the agent left the pool in the backend, but the browser was never told.
+
+**How:** the dispatcher gets the settings it needs, and the announcement
+is wrapped so that a courtesy can never break the event that carries it.
+
 ## Sprint 17 — packaging (parked)
 
 The project is finished and works, so this is a deliberate later step. The

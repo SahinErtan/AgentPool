@@ -271,3 +271,38 @@ def test_a_broken_payload_still_answers_ok(tmp_path) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"ok": True, "accepted": 0, "duplicates": 0}
+
+
+def test_a_finished_agent_is_not_a_failed_delivery(tmp_path) -> None:
+    """An agent that finishes is told to the browser, not swallowed.
+
+    Measured on the live pool: the counters said one delivery had failed
+    with `name 'settings' is not defined`. The announcement of the finished
+    agent used a name it did not have, and the error took the whole event
+    with it — the browser was not told that the agent was done.
+    """
+    client = _app_client(tmp_path)
+
+    start = {
+        "hook_event_name": "SubagentStart",
+        "session_id": "s1",
+        "agent_id": "agent-abc",
+        "agent_type": "Explore",
+    }
+    stop = {
+        "hook_event_name": "SubagentStop",
+        "session_id": "s1",
+        "agent_id": "agent-abc",
+        "agent_type": "Explore",
+    }
+    headers = {"content-type": "application/json"}
+    client.post("/hooks/SubagentStart", json=start, headers=headers)
+    client.post("/hooks/SubagentStop", json=stop, headers=headers)
+
+    metrics = client.get("/api/metrics").json()
+    assert metrics["ingest"]["failed"] == 0, metrics["ingest"]["last_error"]
+    assert metrics["ingest"]["last_error"] is None
+
+    agents = client.get("/api/state").json()["agents"]
+    finished = [a for a in agents if a["status"] == "finished"]
+    assert finished, "the agent that finished is not in the state"
