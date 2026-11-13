@@ -36,7 +36,8 @@ class PoolScene:
 
     def __init__(self) -> None:
         self._lane_of: Dict[str, int] = {}
-        self._lane_occupant: Dict[int, str] = {}
+        # The swimmers of every lane. A lane can hold more than one of them.
+        self._lane_occupants: Dict[int, List[str]] = {}
         self._lounger_of: Dict[str, int] = {}
         self._lounger_occupant: Dict[int, str] = {}
         self._route_of: Dict[str, Dict[str, Any]] = {}
@@ -77,7 +78,6 @@ class PoolScene:
         self._release_waiting(agent.id)
         lane = self._take_lane(agent.id)
         self._assign_route(agent.id, from_point=LADDER, to_point=LADDER, route="descend")
-        self._lane_of[agent.id] = lane
         # The agent is in the water now, so the pool can be smaller.
         self._resize_loungers()
 
@@ -112,23 +112,71 @@ class PoolScene:
     # -- slots --------------------------------------------------------
 
     def _take_lane(self, agent_id: str) -> int:
+        """The lane the agent swims in.
+
+        A lane holds more than one swimmer when the crowd is bigger than the
+        pool, so the lane keeps the *list* of its swimmers and not the name
+        of one of them. When it kept a single name, the lane was given away
+        as soon as that one swimmer left, and two agents ended up swimming
+        in a lane that only one of them was in.
+        """
         current = self._lane_of.get(agent_id)
-        if current is not None and self._lane_occupant.get(current) == agent_id:
+        if current is not None and agent_id in self._lane_occupants.get(current, []):
             return current
-        for lane in range(LANES):
-            if lane not in self._lane_occupant:
-                self._lane_occupant[lane] = agent_id
-                self._lane_of[agent_id] = lane
-                return lane
-        # Every lane is busy: share the least crowded one.
-        lane = min(range(LANES), key=lambda index: 1)
+        free = [index for index in range(LANES) if not self._lane_occupants.get(index)]
+        if free:
+            # A lane of its own: the first swimmer takes the first lane.
+            lane = free[0]
+        else:
+            # Every lane is busy: share the emptiest one. The tie goes to
+            # the last lane, so that the swimmers pile up from the far end
+            # instead of all in the first one.
+            counts = {
+                index: len(self._lane_occupants.get(index, [])) for index in range(LANES)
+            }
+            fewest = min(counts.values())
+            lane = max(index for index, count in counts.items() if count == fewest)
+        self._lane_occupants.setdefault(lane, []).append(agent_id)
         self._lane_of[agent_id] = lane
         return lane
 
     def _release_lane(self, agent_id: str) -> None:
         lane = self._lane_of.pop(agent_id, None)
-        if lane is not None and self._lane_occupant.get(lane) == agent_id:
-            del self._lane_occupant[lane]
+        if lane is None:
+            return
+        occupants = self._lane_occupants.get(lane)
+        if occupants is None:
+            return
+        if agent_id in occupants:
+            occupants.remove(agent_id)
+        if not occupants:
+            del self._lane_occupants[lane]
+        # A lane is empty now, so nobody has to swim in a crowded one.
+        self._balance_lanes()
+
+    def _balance_lanes(self) -> None:
+        """Nobody swims in a crowded lane while another one stands empty.
+
+        The swimmers that share a lane are moved into the empty ones, the
+        one that came last first. Without this the pool keeps the shape of
+        the crowd it had ten minutes ago: a lane with three swimmers next to
+        a lane that nobody uses.
+        """
+        empty = [index for index in range(LANES) if not self._lane_occupants.get(index)]
+        if not empty:
+            return
+        for lane in range(LANES):
+            if not empty:
+                return
+            occupants = self._lane_occupants.get(lane)
+            if not occupants or len(occupants) < 2:
+                continue
+            # The swimmer that came last moves to the empty lane.
+            mover = occupants.pop()
+            target = empty.pop(0)
+            self._lane_occupants.setdefault(target, []).append(mover)
+            self._lane_of[mover] = target
+            self._dirty.add(mover)
 
     def _take_lounger(self, agent_id: str) -> Optional[int]:
         current = self._lounger_of.get(agent_id)
@@ -292,10 +340,19 @@ class PoolScene:
         else:
             mode = "lounge"
 
+        # The swimmers of the lane, in the order they came in, so that each
+        # of them knows where in the lane it swims.
+        swimmers = list(self._lane_occupants.get(lane, [])) if lane is not None else []
+        place = swimmers.index(agent.id) if agent.id in swimmers else 0
+
         props: Dict[str, Any] = {
             "lane": lane,
-            "lane_offset": 0.0 if lane is None else (0.18 if lane % 2 else -0.18),
-            "direction": 1 if (lane or 0) % 2 == 0 else -1,
+            # Two swimmers in one lane are drawn at different heights and
+            # swim in different directions, or they would be one swimmer.
+            "lane_offset": 0.0
+            if lane is None
+            else (0.18 if lane % 2 else -0.18) + place * 0.3,
+            "direction": 1 if ((lane or 0) + place) % 2 == 0 else -1,
             "speed_scale": 1.0,
             "lounger": lounger,
             "waiting": waiting,
@@ -307,7 +364,9 @@ class PoolScene:
 
         slot = None
         if mode == "swim" and lane is not None:
-            slot = f"lane:{lane}"
+            # A lane with more than one swimmer says so: two agents with the
+            # same slot are not the same agent twice.
+            slot = f"lane:{lane}" if len(swimmers) < 2 else f"lane:{lane} ({len(swimmers)})"
         elif mode == "lounge" and lounger is not None:
             slot = f"lounger:{lounger}"
         elif mode == "waiting" and waiting is not None:

@@ -93,7 +93,7 @@ def test_the_sweeper_releases_the_lanes_it_reaped() -> None:
     for index in range(4):
         spawn_into(registry, scene, f"sub:s{index}")
 
-    assert len(scene._lane_occupant) == 4, "the four swimmers need a lane each"
+    assert len(scene._lane_occupants) == 4, "the four swimmers need a lane each"
 
     # The agents are removed upstream and walk out of the gate.
     for index in range(4):
@@ -102,7 +102,7 @@ def test_the_sweeper_releases_the_lanes_it_reaped() -> None:
     clock.now += 16.0
     asyncio.run(sweep_once(registry, scene, hub))
 
-    assert scene._lane_occupant == {}, "the lanes are still full of ghosts"
+    assert scene._lane_occupants == {}, "the lanes are still full of ghosts"
     assert scene._lane_of == {}
     for index in range(4):
         assert not scene.knows(f"sub:s{index}")
@@ -177,7 +177,7 @@ def test_the_reconciler_gives_the_lane_back_for_a_finished_agent() -> None:
     asyncio.run(sync_scene(scene, [state]))
 
     assert "sub:a1" not in scene._lane_of, "the finished agent still swims"
-    assert scene._lane_occupant == {}
+    assert scene._lane_occupants == {}
     assert scene._lounger_of.get("sub:a1") is not None, "it has to get out of the water"
 
 
@@ -195,7 +195,7 @@ def test_the_reconciler_forgets_an_agent_that_is_leaving() -> None:
 
     asyncio.run(sync_scene(scene, [state]))
 
-    assert scene._lane_occupant == {}
+    assert scene._lane_occupants == {}
     assert not scene.knows("sub:a1")
 
 
@@ -211,7 +211,7 @@ def test_the_reconciler_does_not_spawn_a_known_agent_twice() -> None:
     asyncio.run(sync_scene(scene, [registry.get("sub:a1")]))
 
     # The lane was given back and no second lane was taken.
-    assert len(scene._lane_occupant) == 0
+    assert len(scene._lane_occupants) == 0
     assert lane not in scene._lane_of.values()
 
 

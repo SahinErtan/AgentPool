@@ -401,6 +401,27 @@ description still say the same thing. The tool they used last, and a few
 characters of their id, would tell them apart when the description does
 not.
 
+### 37. Two swimmers in one lane while the others stand empty — done
+
+Found while reading the live pool: two agents were swimming in `lane:0`
+and the other three lanes stood empty. The lane kept the *name* of one
+swimmer, so a swimmer that shared a lane was never counted, and the lane
+was given away as soon as the counted one left.
+
+The measurement — twenty runs of a pool that turns over, before and after:
+
+```
+before:  lanes with two swimmers {0: 2} while lanes [1] stand empty
+         lanes with two swimmers {0: 3} while lanes [2, 3] stand empty
+after:   (nothing — every swimmer is counted in its lane)
+```
+
+**How:** a lane keeps the list of its swimmers, not the name of one of
+them. A swimmer that arrives when every lane is busy joins the emptiest
+one, and the one that came last moves into a lane that falls empty, so
+nobody swims in a crowded lane next to an empty one. A shared lane says
+how many swimmers it has: `lane:3 (2)`.
+
 ## Sprint 17 — packaging (parked)
 
 The project is finished and works, so this is a deliberate later step. The

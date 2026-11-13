@@ -171,3 +171,111 @@ def test_an_agent_whose_lounger_disappears_goes_to_the_edge() -> None:
         if scene.presentation(agent)["mode"] == "waiting"
     ]
     assert waiting, "nobody was sent to the edge"
+
+
+def swim(scene: PoolScene, agent: AgentState) -> None:
+    """Put an agent in the water."""
+    asyncio.run(scene.on_agent_spawned(agent))
+    asyncio.run(scene.on_agent_started(agent))
+
+
+def test_every_swimmer_is_counted_in_its_lane() -> None:
+    """The lanes are told apart, and the book-keeping says the truth.
+
+    Measured on the live pool: two agents were swimming in `lane:0` while
+    the other three lanes stood empty. The lane kept the name of one
+    swimmer only, so a swimmer that shared a lane was never counted, and
+    the lane was given away as soon as the counted one left.
+
+    The invariant: every agent that says it swims in a lane is in that
+    lane's set of swimmers, and the two counts are the same.
+    """
+    scene = PoolScene()
+    agents = [make_agent(index, AgentStatus.WORKING) for index in range(1, 9)]
+    for agent in agents:
+        swim(scene, agent)
+
+    # The pool turns over: half of the swimmers leave, a new one comes.
+    for agent in agents[:4]:
+        asyncio.run(scene.on_agent_finished(agent))
+    newcomer = make_agent(20, AgentStatus.WORKING)
+    swim(scene, newcomer)
+
+    swimming = [agent for agent in agents[4:] if agent.id in scene._lane_of]
+    swimming.append(newcomer)
+
+    claimed: dict[int, list[str]] = {}
+    for agent in swimming:
+        lane = scene.presentation(agent)["props"]["lane"]
+        claimed.setdefault(lane, []).append(agent.id)
+
+    for lane, ids in claimed.items():
+        counted = scene._lane_occupants.get(lane, [])
+        assert set(ids) <= set(counted), f"a swimmer of lane {lane} was not counted"
+        assert len(ids) == len(counted), (
+            f"lane {lane} says {len(counted)} swimmers and holds {len(ids)}"
+        )
+
+
+def test_a_lane_is_shared_only_when_every_lane_is_busy() -> None:
+    """Five swimmers, four lanes: one lane is shared, and none is empty."""
+    scene = PoolScene()
+    agents = [make_agent(index, AgentStatus.WORKING) for index in range(1, 6)]
+    for agent in agents:
+        swim(scene, agent)
+
+    lanes = [scene.presentation(agent)["props"]["lane"] for agent in agents]
+    assert sorted(lanes) == [0, 1, 2, 3, 3], f"the lanes are wrong: {lanes}"
+    assert len(scene._lane_occupants) == 4, "a lane was left empty"
+
+
+def test_a_shared_lane_says_how_many_swimmers_it_has() -> None:
+    """Two agents in one lane must not look like one agent twice."""
+    scene = PoolScene()
+    agents = [make_agent(index, AgentStatus.WORKING) for index in range(1, 6)]
+    for agent in agents:
+        swim(scene, agent)
+
+    slots = [scene.presentation(agent)["slot"] for agent in agents]
+    assert "lane:3 (2)" in slots, f"the shared lane does not say so: {slots}"
+
+
+def test_a_swimmer_that_leaves_gives_its_lane_back() -> None:
+    """The lane is free again when the last swimmer of it leaves."""
+    scene = PoolScene()
+    agents = [make_agent(index, AgentStatus.WORKING) for index in range(1, 6)]
+    for agent in agents:
+        swim(scene, agent)
+
+    for agent in agents:
+        asyncio.run(scene.on_agent_finished(agent))
+
+    newcomer = make_agent(9, AgentStatus.WORKING)
+    swim(scene, newcomer)
+    assert scene.presentation(newcomer)["props"]["lane"] == 0
+
+
+def test_nobody_swims_in_a_crowded_lane_while_another_one_is_empty() -> None:
+    """When a swimmer leaves, the pool uses the empty lane.
+
+    Measured: five swimmers, four lanes, one lane shared. When the swimmer
+    of an empty lane goes, the one that shared a lane moves into it, so the
+    pool does not keep a crowded lane next to an empty one.
+    """
+    scene = PoolScene()
+    agents = [make_agent(index, AgentStatus.WORKING) for index in range(1, 6)]
+    for agent in agents:
+        swim(scene, agent)
+
+    assert scene.presentation(agents[4])["slot"] == "lane:3 (2)"
+
+    asyncio.run(scene.on_agent_finished(agents[0]))
+
+    lanes = {
+        agent.id: scene.presentation(agent)["props"]["lane"] for agent in agents[1:]
+    }
+    assert sorted(lanes.values()) == [0, 1, 2, 3], f"the lanes are wrong: {lanes}"
+    assert all(
+        scene.presentation(agent)["slot"] == f"lane:{lanes[agent.id]}"
+        for agent in agents[1:]
+    ), "a lane still says that it is shared"
