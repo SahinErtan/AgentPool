@@ -167,8 +167,17 @@ test('the metrics are read with the parts that may be missing', () => {
   assert.equal(parseMetrics('nothing'), null);
 });
 
-test('the health line is not there when there is nothing to say', () => {
-  assert.equal(healthLine(healthyMetrics()), null);
+test('the health line says the state of the backend', () => {
+  // The line is always there: how many deliveries arrived, how many
+  // agents there are and how many are watching. What went wrong is
+  // added to it.
+  const line = healthLine(healthyMetrics());
+  assert.ok(line);
+  assert.match(line, /deliveries/);
+  assert.match(line, /watching/);
+  assert.match(line, /nothing lost/);
+
+  // Without a backend there is nothing to say.
   assert.equal(healthLine(null), null);
 });
 

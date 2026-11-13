@@ -232,10 +232,10 @@ export function shortDetail(detail: string, limit = 90): string {
 }
 
 /**
- * The health of the backend, in one line — or nothing at all.
+ * The health of the backend, in one line.
  *
- * There is a line only when there is something to say: a healthy backend
- * has nothing to report, and a line that always says "0 refused, 0 failed"
+ * The line says how many deliveries arrived, how many agents there are
+ * and how many are watching. What went wrong is added to it.
  * is noise that hides the day it is not zero.
  */
 export function healthLine(metrics: Metrics | null): string | null {
@@ -264,9 +264,19 @@ export function healthLine(metrics: Metrics | null): string | null {
     }
   }
 
-  if (trouble.length === 0) return null;
+  // The state of the backend is always worth a line: how many deliveries
+  // arrived, how many agents are watching, and how many messages were
+  // lost. The trouble is added to it.
   const deliveries = ingest ? ingest.deliveries : 0;
-  return [`${deliveries} deliveries`, ...trouble].join(' · ');
+  const state = [
+    `${deliveries} ${deliveries === 1 ? 'delivery' : 'deliveries'}`,
+    `${metrics.agents} agents`,
+    `${metrics.hub.clients} watching`,
+  ];
+  if (metrics.hub.dropped + metrics.broker.dropped === 0) {
+    state.push('nothing lost');
+  }
+  return [...state, ...trouble].join(' · ');
 }
 
 /* --- the two endpoints ------------------------------------------------ */

@@ -369,7 +369,39 @@ thing.
 
 All five are done. What is left of the plan is the packaging.
 
-## Sprint 16 — packaging (parked)
+## Sprint 16 — what the observer found in the last round
+
+The third and last round of the observer. Most of it is fixed: the phone
+layout scrolls, no character is drawn outside the pool, the Activity
+section has the health of the backend under it, the "done" filter has
+something to show, the ring sits on the figure, and the ground under the
+pool is ground and not a hole.
+
+What is left:
+
+### 34. The standing character is a stack of blocks
+
+Every part of a character has its own outline, and the parts are joined
+only by overlapping. At the size the characters are drawn on the deck,
+the outlines read as gaps, and the figure looks like a broken mannequin
+rather than a person. The parts need to be drawn as one shape, or the
+outlines need to be lighter where two parts meet.
+
+### 35. The tag above a character is cut short
+
+The tag says "observer-sess…" — thirteen characters is all that fits.
+The name of the agent is in the list and in the inspector, so this is a
+matter of taste, but a pool full of "observer-sess…" says nothing.
+
+### 36. The rows can still say the same thing
+
+The second line of a row is the description of the agent. It is usually
+what makes two agents apart, but two subagents that were given the same
+description still say the same thing. The tool they used last, and a few
+characters of their id, would tell them apart when the description does
+not.
+
+## Sprint 17 — packaging (parked)
 
 The project is finished and works, so this is a deliberate later step. The
 user decided on 2026-11-10 to hold off until they push the project to

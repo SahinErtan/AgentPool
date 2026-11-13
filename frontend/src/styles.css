@@ -283,6 +283,14 @@ body {
   min-width: 0;
 }
 
+/* The description is cut with an ellipsis, not in the middle of a word. */
+.agent__what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent:hover {
   border-color: #2a6b8f;
 }
@@ -654,14 +662,18 @@ body {
     overflow-y: auto;
   }
 
+  /* The list scrolls in its own box, so that the inspector below it stays
+     where it is and the rows are reachable. */
   .stage .agent-list {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     min-height: 0;
-    overflow: visible;
+    overflow-y: auto;
   }
 
   .inspector {
-    max-height: none;
+    flex: 0 0 auto;
+    max-height: 40%;
+    overflow-y: auto;
   }
 
   .stage {

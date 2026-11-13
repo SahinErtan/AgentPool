@@ -219,20 +219,22 @@ export function drawShell(g: Graphics, layout: PoolLayout, palette: Palette): vo
   const bottom = layout.height;
   const worldRight = layout.worldLeft + layout.worldWidth;
 
-  // The ground on both sides of the pool.
+  // The ground on both sides of the pool. It is the same earth as the
+  // terrace above, only in the shade: a ground that is much darker than
+  // the deck reads as a hole in the picture.
   g.rect(
     layout.worldLeft,
     layout.surfaceY,
     water.x - layout.worldLeft,
     bottom - layout.surfaceY,
-  ).fill(palette.poolWall);
+  ).fill(palette.deckShade);
   g.rect(water.x + water.w, layout.surfaceY, worldRight - (water.x + water.w), bottom - layout.surfaceY).fill(
-    palette.poolWall,
+    palette.deckShade,
   );
 
   // The ground under the floor of the pool.
   g.poly([water.x, shallow, water.x + water.w, deep, water.x + water.w, bottom, water.x, bottom], true).fill(
-    palette.poolWall,
+    palette.deckShade,
   );
 }
 

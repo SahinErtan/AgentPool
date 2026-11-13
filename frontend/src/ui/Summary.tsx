@@ -42,7 +42,7 @@ export function Summary() {
       <span className="summary__item summary__item--working">{working} working</span>
       <span className="summary__item summary__item--idle">{idle} idle</span>
       <span className="summary__item summary__item--done">{done} done</span>
-      <span className="summary__item summary__item--total">{list.length} in the pool</span>
+      <span className="summary__item summary__item--total">{list.length} on the scene</span>
       {recent > 0 ? (
         <span className="summary__item summary__item--recent">
           {recent} finished in the last 5 min

@@ -154,11 +154,13 @@ def test_the_sweeper_reaps_an_expired_exit():
 
 def test_a_stalled_agent_goes_idle_instead_of_freezing_in_the_water():
     registry = make_registry(idle_ttl_s=90.0)
-    spawn(registry)
+    spawn(registry, detail="looking around the repo")
     registry.sweep(now=1000.0 + 91.0)
     agent = registry.get("sub:a1")
     assert agent.status is AgentStatus.IDLE
-    assert agent.detail == "stalled?"
+    # The description of the agent is not touched: it is what tells two
+    # agents of the same kind apart in the list.
+    assert agent.detail == "looking around the repo"
 
 
 def test_an_idle_session_is_eventually_reaped():

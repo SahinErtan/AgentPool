@@ -296,7 +296,9 @@ class AgentRegistry:
 
             if state.status is AgentStatus.WORKING and idle_for > self._idle_ttl_s:
                 state.status = AgentStatus.IDLE
-                state.detail = "stalled?"
+                # The description of the agent is left alone: it is what
+                # tells two agents of the same kind apart, and "stalled?"
+                # in every row of the list says nothing.
                 changed.append(state)
                 continue
 

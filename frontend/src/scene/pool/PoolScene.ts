@@ -1328,7 +1328,31 @@ export class PoolScene {
       // The deck may have fewer loungers than it had: the agents that do
       // not fit have to be told where to wait now.
       this.applyPresentation(character, character.agent);
+      // A character that was somewhere else a moment ago must be put
+      // back into the pool that is on the screen now, or it swims in a
+      // pool that is not there any more.
+      this.clampIntoView(character);
     }
+  }
+
+  /**
+   * Put a character back into the pool it is in.
+   *
+   * The window changed size, so the pool changed with it. A character
+   * that was in the middle of the old pool would be outside the new one
+   * — out of sight, and still counting as an agent that is in the pool.
+   */
+  private clampIntoView(character: Character): void {
+    const layout = this.layout;
+    if (character.state === 'swimming') {
+      const lane = this.laneFor(character);
+      character.x = Math.max(lane.x + 4, Math.min(character.x, lane.x + lane.w - 4));
+      return;
+    }
+    const half = layout.characterHeight * 0.6;
+    const left = layout.gate.x;
+    const right = Math.max(left + 1, layout.width - half);
+    character.x = Math.max(left, Math.min(character.x, right));
   }
 
   destroy(): void {

@@ -175,7 +175,15 @@ export const store = {
     if (!state.agents.has(agentId)) return;
     const map = new Map(state.agents);
     map.delete(agentId);
-    state = { ...state, agents: map, lastFrameAt: Date.now() };
+    // The agent has left the pool, so it is done — whatever the last
+    // state we heard of it was. The memory is what the "done" filter
+    // looks at, and it must not keep saying that the agent is working.
+    const memory = new Map(state.memory);
+    const entry = memory.get(agentId);
+    if (entry && entry.status !== 'finished' && entry.status !== 'leaving') {
+      memory.set(agentId, { ...entry, status: 'finished' });
+    }
+    state = { ...state, agents: map, memory, lastFrameAt: Date.now() };
     emit();
   },
 

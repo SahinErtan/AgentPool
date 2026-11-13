@@ -103,7 +103,7 @@ export function Activity() {
                   <span className="activity__time">{formatEventTime(event.ts)}</span>
                   <span className="activity__agent">{eventAgentName(event)}</span>
                   <span className="activity__what">{eventWhat(event)}</span>
-                  {event.detail ? (
+                  {event.detail && event.detail !== eventAgentName(event) ? (
                     <span className="activity__detail">{shortDetail(event.detail)}</span>
                   ) : null}
                 </li>
