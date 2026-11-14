@@ -24,6 +24,8 @@ import {
   cameraLeftFor,
   computeLayout,
   LOUNGER_COUNT,
+  loungerSeatY,
+  poolFloorY,
   resolveWaypoint,
   swimYFor,
   WAITING_COUNT,
@@ -31,7 +33,7 @@ import {
 } from './layout';
 import { Ambience } from './ambience';
 import { prefersReducedMotion } from '../motion';
-import { SleepZ, SpeechBubble, Steam } from '../characters/effects';
+import { SleepZ, SpeechBubble, Splash, Steam } from '../characters/effects';
 import { hitTest, HitBoxCache, type Pose } from './hittest';
 import { hourOfDay, mixColour, paletteFor, applyWeather, type Palette } from './daylight';
 import { rainAmount, weatherFor, type Weather } from './weather';
@@ -125,6 +127,8 @@ interface Character {
   effectTimer: number;
   /** A fixed random seed for the character's idle chatter. */
   effectSeed: number;
+  /** How many strokes the character had done the last time it was drawn. */
+  lastStrokes: number;
   /** True while the character is on its way somewhere. */
   readonly moving: boolean;
   /** True when the character has somewhere to go. */
@@ -141,6 +145,22 @@ export class PoolScene {
   private underLayer = new Container();
   private waterLayer = new Container();
   private surfaceLayer = new Container();
+  /**
+   * The shadows of the figures.
+   *
+   * Nothing was grounded: a figure stood on the deck with nothing under
+   * it, and a swimmer had no shadow on the floor of the pool.
+   */
+  private shadowLayer = new Container();
+  /**
+   * The shadow on the floor of the pool.
+   *
+   * It has a layer of its own, because the floor layer is emptied and
+   * destroyed every time the light of the day changes.
+   */
+  private floorShadowLayer = new Container();
+  private deckShadow = new Graphics();
+  private floorShadow = new Graphics();
   private fxLayer = new Container();
   private labelLayer = new Container();
   private maskAbove = new Graphics();
@@ -160,6 +180,7 @@ export class PoolScene {
   private debugText: Text | null = null;
   private ambience: Ambience;
   private steam = new Steam();
+  private splash = new Splash();
   private sleepZ = new SleepZ();
   private bubble = new SpeechBubble();
 
@@ -238,9 +259,11 @@ export class PoolScene {
       this.skyLayer,
       this.deckLayer,
       this.floorLayer,
+      this.floorShadowLayer,
       this.causticsLayer,
       this.underLayer,
       this.waterLayer,
+      this.shadowLayer,
       this.surfaceLayer,
       this.fxLayer,
       this.labelLayer,
@@ -252,9 +275,17 @@ export class PoolScene {
     // on the screen — but taking it out of the render pass as well makes
     // the whole layer disappear in some browsers.
 
+    this.shadowLayer.addChild(this.deckShadow);
+    this.floorShadowLayer.addChild(this.floorShadow);
+
     this.ambience = new Ambience(this.layout);
     this.world.addChild(this.ambience.container);
-    this.world.addChild(this.steam.container, this.sleepZ.container, this.bubble.container);
+    this.world.addChild(
+      this.steam.container,
+      this.sleepZ.container,
+      this.bubble.container,
+      this.splash.container,
+    );
     this.fxLayer.addChild(this.hoverRing);
     // The foam line is clipped to the water, so the part of it that
     // travels past the edge of the pool stays out of the way. The mask
@@ -352,6 +383,37 @@ export class PoolScene {
       sprite.blendMode = 'add';
       this.causticsLayer.addChild(sprite);
     }
+
+    // The light shafts: soft beams coming down into the water.
+    //
+    // The lower half of the pool used to be an empty gradient. The beams
+    // are what make the depth of it read.
+    const beams = new Graphics();
+    const beamCount = 7;
+    for (let index = 0; index < beamCount; index += 1) {
+      const x =
+        layout.water.x +
+        50 +
+        (index * (layout.water.w - 100)) / Math.max(1, beamCount - 1);
+      const width = 24 + ((index * 37) % 24);
+      const bottom = poolFloorY(layout, x);
+      beams
+        .poly(
+          [
+            x - width / 2,
+            layout.water.y,
+            x + width / 2,
+            layout.water.y,
+            x + width / 2 + 18,
+            bottom,
+            x - width / 2 + 18,
+            bottom,
+          ],
+          true,
+        )
+        .fill({ color: 0xdff2ff, alpha: 0.12 * (layout.water.h / 400) });
+    }
+    this.causticsLayer.addChild(beams);
 
     // The shell of the pool is drawn together with the water: it has to
     // be over the caustics, which are over the floor of the pool.
@@ -620,6 +682,7 @@ export class PoolScene {
       lastMode: '',
       effectTimer: 0,
       effectSeed: (spec.seed % 1000) / 1000,
+      lastStrokes: 0,
       get moving(): boolean {
         return this.state === 'walking' || this.state === 'climbing';
       },
@@ -806,7 +869,15 @@ export class PoolScene {
         const target =
           character.loungerSlot === null ? null : `lounger:${character.loungerSlot}`;
         // While it walks, its height is settled by the waypoint it walks to.
-        if (character.state !== 'walking') character.y = this.layout.deckY;
+        // Once it is lying down, it lies on the lounger, not on the deck.
+        if (character.state !== 'walking') {
+          // The hips go on the seat of the lounger. The root of the figure
+          // is at its feet, and the hips are a good deal above them, so the
+          // root has to be lifted by exactly that much.
+          const seat = loungerSeatY(this.layout);
+          const wanted = seat - character.rig.skeleton.hipY * character.rig.root.scale.y;
+          character.y += (wanted - character.y) * Math.min(1, dt * 6);
+        }
         if (!character.entered) {
           // Walking in through the gate towards its lounger.
           character.state = 'walking';
@@ -818,6 +889,10 @@ export class PoolScene {
           character.target = target;
         } else {
           character.state = 'lounging';
+          // The back rest is at the left end of every lounger, so a figure
+          // that sits down faces right and leans back against it. A figure
+          // that kept the way it was walking leaned back into thin air.
+          this.face(character, 1);
         }
         break;
       }
@@ -915,9 +990,9 @@ export class PoolScene {
     }
     this.rain = rainAmount(clock);
 
-    // The clock of the animation is taken once for the whole frame, so
-    // every character breathes at the same moment.
-    const animTime = performance.now() / 1000;
+    // The world shares one clock — the caustics, the foam and the light
+    // all move together — but the characters keep their own, so a row of
+    // loungers is not a row of figures breathing in step.
 
     this.updateFilter();
 
@@ -928,7 +1003,7 @@ export class PoolScene {
       // know where it is now.
       this.clearance.update(character);
       character.animator.setState(character.state);
-      character.animator.update(dtMs, animTime);
+      character.animator.update(dtMs);
       character.rig.root.position.set(character.x, character.y);
       if (character.under) character.under.root.position.set(character.x, character.y);
 
@@ -953,6 +1028,9 @@ export class PoolScene {
             character.state !== 'lounging' &&
             character.state !== 'resting'));
     }
+
+    this.separateLabels();
+    this.drawShadows();
 
     // The hit areas follow the characters, so the pointer does not have to
     // build them again every time it moves.
@@ -1016,11 +1094,11 @@ export class PoolScene {
         this.steam.emit(cup.x, cup.y - this.layout.characterHeight * 0.06);
       } else if (activity === 'nap' && character.effectTimer > 1.3) {
         character.effectTimer = 0;
-        const head = character.rig.headPivot.getGlobalPosition();
+        const head = character.rig.headGroup.getGlobalPosition();
         this.sleepZ.emit(head.x, head.y - this.layout.characterHeight * 0.2);
       } else if ((activity === 'chat' || activity === 'call') && character.effectTimer > 2.2) {
         character.effectTimer = 0;
-        const head = character.rig.headPivot.getGlobalPosition();
+        const head = character.rig.headGroup.getGlobalPosition();
         const lines =
           activity === 'call'
             ? ['yes?', 'I will', 'hold on', 'can you hear me?', 'bye']
@@ -1036,6 +1114,29 @@ export class PoolScene {
     this.steam.update(dt);
     this.sleepZ.update(dt);
     this.bubble.update(dt);
+
+    // The splash.
+    //
+    // A hand that goes into the water pushes some of it up. The stroke is
+    // counted by the animator, and the scene puts the water where the hand
+    // was.
+    for (const character of this.characters.values()) {
+      if (character.state !== 'swimming') {
+        character.lastStrokes = character.animator.strokeCount;
+        continue;
+      }
+      if (character.animator.strokeCount === character.lastStrokes) continue;
+      character.lastStrokes = character.animator.strokeCount;
+      const hand = character.rig.handR.getGlobalPosition();
+      // The water is at the surface, and the hand is under it: the splash
+      // goes up from the surface, in front of the swimmer.
+      this.splash.emit(
+        hand.x + character.facing * this.layout.characterHeight * 0.12,
+        this.layout.surfaceY + 2,
+        0.8,
+      );
+    }
+    this.splash.update(dt);
 
     // The decoration stops when the screen asks for less motion. The
     // characters keep moving: that is what the pool is for.
@@ -1081,22 +1182,122 @@ export class PoolScene {
     }
   }
 
+  /**
+   * Draw the shadow of every figure.
+   *
+   * A figure on the deck has a shadow on the deck. A swimmer has a shadow
+   * on the floor of the pool, away from the surface, and the deeper the
+   * lane the further away it is.
+   */
+  private drawShadows(): void {
+    this.deckShadow.clear();
+    this.floorShadow.clear();
+    const light = this.palette.light;
+    for (const character of this.characters.values()) {
+      if (character.dimmed) continue;
+      const span = character.spec.height * this.layout.characterHeight;
+
+      if (character.state === 'swimming') {
+        const floorY = poolFloorY(this.layout, character.x);
+        this.floorShadow
+          .ellipse(character.x, floorY - 2, span * 0.44, span * 0.1)
+          .fill({ color: 0x0d3f66, alpha: 0.18 * light });
+        continue;
+      }
+
+      const lying = character.state === 'lounging' || character.state === 'activity';
+      // A figure that sits is long and thin; one that stands is short and
+      // round. The shadow of a figure that sits is on the ground under the
+      // chair, not under its hips.
+      const half = lying ? span * 0.46 : span * 0.19;
+      const offset = lying ? -span * 0.24 : 0;
+      const ground = lying ? this.layout.deckY : character.y;
+      this.deckShadow
+        .ellipse(character.x + offset, ground, half, span * 0.08)
+        .fill({ color: 0x6b5638, alpha: 0.2 * light });
+    }
+  }
+
+  /**
+   * Keep the labels from lying on top of each other.
+   *
+   * The characters that queue at the ladder walk close together, and their
+   * labels came out as one unreadable smear. The labels are placed in order
+   * of importance — the selected one, the one under the pointer, then the
+   * ones on the move — and a label that would cover one already placed is
+   * left out. The list beside the pool still names every one of them.
+   */
+  private separateLabels(): void {
+    const selected = store.get().selectedId;
+    const rank = (character: Character): number =>
+      character.id === selected ? 0 : character.id === this.hoveredId ? 1 : 2;
+    const shown = [...this.characters.values()]
+      .filter((character) => character.label.visible)
+      .sort((a, b) => rank(a) - rank(b));
+    const placed: { left: number; right: number; top: number; bottom: number }[] = [];
+    for (const character of shown) {
+      const label = character.label;
+      const width = label.width;
+      const height = label.height;
+      // The label is anchored at the middle of its bottom edge.
+      const box = {
+        left: label.x - width / 2 - 2,
+        right: label.x + width / 2 + 2,
+        top: label.y - height - 1,
+        bottom: label.y + 1,
+      };
+      const overlaps = placed.some(
+        (other) =>
+          box.left < other.right &&
+          box.right > other.left &&
+          box.top < other.bottom &&
+          box.bottom > other.top,
+      );
+      if (overlaps) {
+        label.visible = false;
+        continue;
+      }
+      placed.push(box);
+    }
+  }
+
+  /** Turn a character to face a direction, on both of its rigs. */
+  private face(character: Character, direction: number): void {
+    character.facing = direction;
+    if (character.rig.facing.scale.x !== direction) {
+      character.rig.facing.scale.x = direction;
+      if (character.under) character.under.facing.scale.x = direction;
+    }
+  }
+
   private laneFor(character: Character): { x: number; w: number } {
     return this.layout.lanes[character.laneIndex] ?? this.layout.lanes[0];
   }
 
   private moveCharacter(character: Character, dt: number): void {
+    // The character covered this much ground in this frame. The walk
+    // follows it, so a character that is held up by another one stops
+    // walking its legs.
+    const before = character.x;
+
     if (character.state === 'swimming') {
       // Swim along the lane and wrap around at its ends.
       const speed = WALK_SPEED * 1.6 * character.spec.speedScale;
       character.x += character.facing * speed * dt;
       const lane = this.laneFor(character);
+      // The origin of a swimmer is its feet, and the head is a good deal
+      // ahead of them, so the lane has to hold the whole body and not only
+      // the feet: a swimmer whose head hangs over the edge of the pool is
+      // swimming in the wall. The body is only ahead of the feet, so the
+      // room is taken off the far end of the lane and not off both.
+      const body = character.spec.height * this.layout.characterHeight * 0.85;
       const left = lane.x + 12;
-      const right = lane.x + lane.w - 12;
+      const right = lane.x + lane.w - 12 - body;
       if (character.x > right) character.x = left;
       if (character.x < left) character.x = right;
       return;
     }
+
 
     if (
       character.state !== 'walking' &&
@@ -1119,7 +1320,13 @@ export class PoolScene {
     // The character also walks towards the height of its waypoint, so a
     // character that is promoted from the pool edge climbs onto the deck
     // instead of teleporting there.
-    character.y += (target.y - character.y) * Math.min(1, dt * 8);
+    //
+    // A figure that is already sitting is left alone: its height is the
+    // height of the seat of the lounger, and the two would pull against
+    // each other.
+    if (character.state !== 'lounging') {
+      character.y += (target.y - character.y) * Math.min(1, dt * 8);
+    }
 
     const dx = target.x + offset - character.x;
     const distance = Math.abs(dx);
@@ -1184,11 +1391,17 @@ export class PoolScene {
         character.state = character.desired === 'waiting' ? 'resting' : 'lounging';
         character.entered = true;
         character.y = target.y;
+        if (character.state === 'lounging') this.face(character, 1);
       }
       return;
     }
 
     character.x += Math.sign(dx) * step;
+    // One stride is about as long as the character is tall.
+    const covered = Math.abs(character.x - before);
+    if (covered > 0) {
+      character.animator.advanceWalk(covered / (this.layout.characterHeight * 1.2));
+    }
     character.facing = Math.sign(dx) || character.facing;
     if (character.rig.facing.scale.x !== character.facing) {
       character.rig.facing.scale.x = character.facing;

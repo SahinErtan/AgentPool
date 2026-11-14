@@ -8,6 +8,8 @@
  */
 
 import { damp } from './math';
+import { channelSeed, fbm } from './noise';
+import { dampingFor, spring, springStep, type SpringState } from './spring';
 import { buildProps, type PropSet, type Rig } from './rig';
 import type { CharacterSpec } from './spec';
 import {
@@ -24,6 +26,7 @@ import {
   SWIM_STYLES,
   walkPose,
   zeroPose,
+  type Motion,
   type Pose,
   type ReactionKind,
 } from './poses';
@@ -78,7 +81,27 @@ export class CharacterAnimator {
   private layerClimb: Pose = zeroPose();
 
   private state: CharState = 'resting';
+  /**
+   * The character's own clock, in seconds.
+   *
+   * It used to be the scene's clock, which every character shared: the
+   * whole pool breathed at the same moment and looked like a machine.
+   * Each character has its own now, and its own noise on top of it.
+   */
+  private time: number;
+  /** The clock and the seed handed to the pose layers. */
+  private readonly motion: Motion = { t: 0, seed: 0 };
   private swimPhase: number;
+  /**
+   * The phase of the walk.
+   *
+   * It is advanced by the distance the character covered, not by the time
+   * that passed. A character that is held up by another one used to keep
+   * walking its legs on the spot.
+   */
+  private walkPhase: number;
+  /** How many strokes the character has finished. */
+  private strokes = 0;
   private activityU = 0;
   private activityOn = false;
   private idleTimer = 0;
@@ -95,6 +118,19 @@ export class CharacterAnimator {
   private reactionFrozen = false;
   private layerReaction: Pose = zeroPose();
 
+  /**
+   * The springs.
+   *
+   * A wave says where a thing is. A spring says where a thing is going and
+   * how it gets there: it lags, it overshoots and it settles. That lag is
+   * what makes a movement read as physical.
+   */
+  private headPitchSpring: SpringState = spring(0);
+  private headYawSpring: SpringState = spring(0);
+  private hairSpring: SpringState = spring(0);
+  /** The channel of the noise that the body rides on. */
+  private readonly rideSeed: number;
+
   constructor(rig: Rig) {
     this.rig = rig;
     this.spec = rig.spec;
@@ -104,7 +140,14 @@ export class CharacterAnimator {
       rig.propLayer.addChild(prop);
     }
     this.swimPhase = this.spec.phaseOffset;
+    this.walkPhase = this.spec.phaseOffset;
     this.blinkTimer = this.spec.blinkInterval * this.spec.phaseOffset;
+    // The clock starts at a different place for every character, so two
+    // characters that arrive at the same moment are not in the same place
+    // in their own cycle either.
+    this.time = this.spec.phaseOffset * 7;
+    this.motion.seed = this.spec.noiseSeed;
+    this.rideSeed = channelSeed(this.spec.noiseSeed, 7);
     this.rig.facing.scale.x = this.spec.flip ? -1 : 1;
   }
 
@@ -145,12 +188,13 @@ export class CharacterAnimator {
    * Bring the character one frame further.
    *
    * @param dtMs The time that passed, in milliseconds.
-   * @param time The clock of the scene, in seconds. The scene passes the
-   *   same one to every character, so the whole pool breathes together.
    */
-  update(dtMs: number, time: number = performance.now() / 1000): void {
+  update(dtMs: number): void {
     const dt = dtMs / 1000;
     const w = this.weights;
+    // The character keeps its own time.
+    this.time += dt;
+    this.motion.t = this.time;
 
     const wantSwim = this.state === 'swimming' ? 1 : 0;
     const wantWalk = this.state === 'walking' ? 1 : 0;
@@ -176,10 +220,14 @@ export class CharacterAnimator {
     // --- phases ----------------------------------------------------
     if (this.state === 'swimming') {
       const style = SWIM_STYLES[this.spec.swimStyle];
+      const before = this.swimPhase;
       this.swimPhase = (this.swimPhase + dt * style.cadence * this.spec.speedScale) % 1;
-    } else if (this.state === 'walking') {
-      this.swimPhase = (this.swimPhase + dt * 1.6) % 1;
+      // The phase wrapped: a stroke is over.
+      if (this.swimPhase < before) this.strokes += 1;
     }
+    // The walk is not advanced here: it is advanced by the distance the
+    // character covered, so a character that is held up by another one
+    // stops walking its legs.
     if (this.state === 'climbing') {
       this.climbU = Math.min(1, this.climbU + dt / 1.2);
     }
@@ -188,17 +236,24 @@ export class CharacterAnimator {
     this.updateIdleActivity(dt);
 
     // --- build the layers ------------------------------------------
-    restPose(this.layerRest, time);
-    loungePose(this.layerLounge, time);
-    walkPose(this.layerWalk, this.swimPhase);
-    if (this.state === 'climbing') {
-      climbPose(this.layerClimb, this.climbU);
-    } else {
-      climbPose(this.layerClimb, this.climbU);
+    //
+    // Only the layers that are wanted are built. A swimmer has no weight
+    // on the rest and the lounge, and a figure on the deck has no weight
+    // on the swim, and the pool is meant to hold sixty of them.
+    if (w.rest > 0.001) restPose(this.layerRest, this.motion);
+    if (w.lounge + w.activity > 0.001) loungePose(this.layerLounge, this.motion);
+    if (w.walk > 0.001) walkPose(this.layerWalk, this.walkPhase);
+    if (w.climb > 0.001) climbPose(this.layerClimb, this.climbU);
+    if (w.swim > 0.001) {
+      SWIM_STYLES[this.spec.swimStyle].fn(this.layerSwim, this.swimPhase, this.spec);
+      // The body rides on the stroke, and the ride is never quite the same
+      // twice. The stroke itself stays a cycle, because a crawl *is* a
+      // cycle; it is the layer on top of it that wanders.
+      this.layerSwim.bob += fbm(this.time * 0.42, this.rideSeed) * 0.014;
+      this.layerSwim.bodyRoll += fbm(this.time * 0.31, this.rideSeed + 1) * 0.015;
     }
-    SWIM_STYLES[this.spec.swimStyle].fn(this.layerSwim, this.swimPhase, this.spec);
     if (this.activityOn || w.activity > 0.001) {
-      activityPose(this.layerActivity, this.spec.idleActivity, this.activityU, this.spec);
+      activityPose(this.layerActivity, this.spec.idleActivity, this.activityU, this.motion);
     } else {
       copyPose(this.layerRest, this.layerActivity);
     }
@@ -225,9 +280,20 @@ export class CharacterAnimator {
       if (this.reactionU >= 1 && !this.reactionFrozen) this.reaction = null;
     }
 
+    // The head arrives a moment after the body, and the hair a moment
+    // after the head.
+    springStep(this.headPitchSpring, this.pose.headPitch, 14, dampingFor(14, 0.7), dtMs);
+    this.pose.headPitch = this.headPitchSpring.value;
+    springStep(this.headYawSpring, this.pose.headYaw, 11, dampingFor(11, 0.7), dtMs);
+    this.pose.headYaw = this.headYawSpring.value;
+    springStep(this.hairSpring, this.pose.headPitch, 9, dampingFor(9, 0.5), dtMs);
+
     this.applyPose(this.pose);
     this.updateBlink(dtMs);
     this.updateProps();
+    // The hair swings about after the head.
+    this.rig.hair.rotation = this.hairSpring.value * 0.5;
+    if (this.secondary) this.secondary.hair.rotation = this.hairSpring.value * 0.5;
   }
 
   private updateIdleActivity(dt: number): void {
@@ -301,7 +367,11 @@ export class CharacterAnimator {
     // The prop sits in the hand; the layer counter-rotates so a raised cup
     // stays upright instead of tipping with the wrist.
     const layer = this.rig.propLayer;
-    layer.rotation = -(this.pose.armR + this.pose.elbowR);
+    // The rig turns the hand by -(arm + elbow) on top of the lean of the
+    // body, so the prop turns back by exactly that much. It used to turn
+    // the wrong way, which was right only while the rig was backwards.
+    layer.rotation =
+      this.pose.armR + this.pose.elbowR - this.pose.bodyPitch - this.pose.bodyRoll;
     layer.position.set(0, 0);
 
     if (cup.visible) cup.position.set(0, -this.rig.skeleton.limb * 1.4);
@@ -334,14 +404,24 @@ export class CharacterAnimator {
     rig.headPivot.rotation = -pose.headPitch;
     rig.headPivot.rotation += pose.headYaw * 0.25;
 
-    rig.armL.rotation = pose.armL;
-    rig.armR.rotation = pose.armR;
-    rig.elbowL.rotation = pose.elbowL;
-    rig.elbowR.rotation = pose.elbowR;
-    rig.legL.rotation = pose.legL;
-    rig.legR.rotation = pose.legR;
-    rig.kneeL.rotation = pose.kneeL;
-    rig.kneeR.rotation = pose.kneeR;
+    // The angles are negated here, and that is the whole point of the
+    // convention: a limb is drawn downwards from its pivot, and Pixi's
+    // positive rotation turns a downwards limb *backwards*. The poses are
+    // written the other way round — a positive angle means "towards the
+    // facing direction" — so the sign has to be flipped here.
+    //
+    // It used to be missing, and every limb in the pool was backwards: the
+    // crawl reached behind the swimmer instead of in front, the knee of the
+    // walk bent on the wrong half of the stride, and the wave pointed at
+    // the deck.
+    rig.armL.rotation = -pose.armL;
+    rig.armR.rotation = -pose.armR;
+    rig.elbowL.rotation = -pose.elbowL;
+    rig.elbowR.rotation = -pose.elbowR;
+    rig.legL.rotation = -pose.legL;
+    rig.legR.rotation = -pose.legR;
+    rig.kneeL.rotation = -pose.kneeL;
+    rig.kneeR.rotation = -pose.kneeR;
   }
 
   /** The current layer weights, for the debug overlay. */
@@ -357,6 +437,32 @@ export class CharacterAnimator {
   /** Debug helper: freeze the swim / walk phase so a stroke can be scrubbed. */
   setPhase(phase: number): void {
     this.swimPhase = ((phase % 1) + 1) % 1;
+    this.walkPhase = this.swimPhase;
+  }
+
+  /**
+   * Advance the walk by the distance the character covered.
+   *
+   * @param cycles How many whole strides the character took.
+   */
+  advanceWalk(cycles: number): void {
+    this.walkPhase = (this.walkPhase + cycles) % 1;
+  }
+
+  /**
+   * How many strokes the character has finished.
+   *
+   * The scene listens to this: a hand that goes into the water pushes
+   * some of it up, and that is what tells the pool that somebody is
+   * swimming in it.
+   */
+  get strokeCount(): number {
+    return this.strokes;
+  }
+
+  /** The phase of the walk, for the debug overlay. */
+  get walkCycle(): number {
+    return this.walkPhase;
   }
 
   /** Debug helper: force the idle activity to a given progress. */

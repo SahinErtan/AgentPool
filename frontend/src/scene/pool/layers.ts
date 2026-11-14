@@ -6,7 +6,14 @@
  */
 
 import { Graphics, Texture } from 'pixi.js';
-import { poolFloorY, poolLeftAtDepth, type PoolLayout } from './layout';
+import {
+  loungerBackY,
+  loungerSeatY,
+  parasolX,
+  poolFloorY,
+  poolLeftAtDepth,
+  type PoolLayout,
+} from './layout';
 import { mixColour, type Palette } from './daylight';
 
 export const COLORS = {
@@ -82,6 +89,35 @@ export function drawSky(g: Graphics, layout: PoolLayout, palette: Palette): void
     }
   }
 
+  // The hedge and the fence behind the deck.
+  //
+  // The terrace used to run straight into the sky, so the deck had no
+  // back to it and the figures stood against nothing.
+  const hedgeY = layout.deck.y + 4;
+  for (let x = layout.worldLeft - 30; x < layout.worldLeft + layout.worldWidth + 30; x += 24) {
+    const height = 20 + ((x * 7919) % 14);
+    g.circle(x, hedgeY - height * 0.42, height * 0.62).fill({
+      color: palette.tree,
+      alpha: 0.62,
+    });
+    g.circle(x + 12, hedgeY - height * 0.3, height * 0.44).fill({
+      color: palette.tree,
+      alpha: 0.5,
+    });
+  }
+  // The fence above it: two rails and a post every so often.
+  for (let x = layout.worldLeft - 30; x < layout.worldLeft + layout.worldWidth + 30; x += 58) {
+    g.rect(x, hedgeY - 46, 3, 46).fill({ color: palette.trunk, alpha: 0.4 });
+  }
+  g.rect(layout.worldLeft - 30, hedgeY - 40, layout.worldWidth + 60, 2.5).fill({
+    color: palette.trunk,
+    alpha: 0.32,
+  });
+  g.rect(layout.worldLeft - 30, hedgeY - 28, layout.worldWidth + 60, 2.5).fill({
+    color: palette.trunk,
+    alpha: 0.32,
+  });
+
   // A distant treeline, so the sky has a horizon.
   const treeBase = layout.deckY;
   for (let x = layout.worldLeft - 20; x < layout.worldLeft + layout.worldWidth + 20; x += 46) {
@@ -120,17 +156,90 @@ export function drawDeck(g: Graphics, layout: PoolLayout, palette: Palette): voi
   });
 
   // The loungers.
+  //
+  // A figure leans back on a lounger, so a lounger is a chair with a back
+  // rest and not a slab. It used to be a flat orange rectangle, and the
+  // figure lay on it like a bundle of sticks.
+  const seatY = loungerSeatY(layout);
+  const backY = loungerBackY(layout);
+  const thick = Math.round(layout.characterHeight * 0.13);
   for (const slot of layout.loungers) {
-    g.roundRect(slot.x, slot.y, slot.w, slot.h, 6).fill(COLORS.lounger);
-    g.roundRect(slot.x + 4, slot.y + slot.h * 0.35, slot.w - 8, slot.h * 0.5, 4).fill({
-      color: 0xffffff,
-      alpha: 0.22,
+    // The back rest: a slab leaning back at the far end.
+    const backWidth = Math.max(12, Math.round(slot.w * 0.3));
+    const seatTop = seatY - Math.round(layout.characterHeight * 0.05);
+    // The slab is offset downwards rather than sideways, so it has some
+    // thickness: a band drawn along the line came out as a stick.
+    g.poly(
+      [
+        slot.x,
+        backY,
+        slot.x + backWidth,
+        seatTop,
+        slot.x + backWidth,
+        seatTop + thick,
+        slot.x,
+        backY + thick,
+      ],
+      true,
+    ).fill(COLORS.lounger);
+    // The cushion on the back rest.
+    g.poly(
+      [
+        slot.x + 3,
+        backY + 3,
+        slot.x + backWidth - 3,
+        seatTop - 3,
+        slot.x + backWidth - 3,
+        seatTop - 3 + Math.round(thick * 0.34),
+        slot.x + 3,
+        backY + 3 + Math.round(thick * 0.34),
+      ],
+      true,
+    ).fill({ color: 0xffffff, alpha: 0.2 });
+
+    // The seat.
+    const seatX = slot.x + backWidth - Math.round(thick * 0.5);
+    g.roundRect(
+      seatX,
+      seatTop,
+      slot.x + slot.w - seatX,
+      Math.round(thick * 0.75),
+      4,
+    ).fill(COLORS.lounger);
+    // The cushion on the seat.
+    g.roundRect(
+      seatX + 3,
+      seatTop + 2,
+      slot.x + slot.w - seatX - 6,
+      Math.round(thick * 0.34),
+      3,
+    ).fill({ color: 0xffffff, alpha: 0.24 });
+    // A towel folded over the seat.
+    g.roundRect(
+      slot.x + slot.w - Math.round(layout.characterHeight * 0.3),
+      seatTop - Math.round(layout.characterHeight * 0.05),
+      Math.round(layout.characterHeight * 0.24),
+      Math.round(layout.characterHeight * 0.12),
+      3,
+    ).fill({ color: 0xf2f6f8, alpha: 0.85 });
+    // The legs reach the deck. They used to be eight pixels long whatever
+    // the size of the pool, and on a big screen the chair hung in the air
+    // above its own shadow.
+    const legTop = seatTop + Math.round(thick * 0.75);
+    const legHeight = Math.max(4, layout.deckY - legTop);
+    const leg = Math.max(3, Math.round(layout.characterHeight * 0.035));
+    g.rect(seatX + 4, legTop, leg, legHeight).fill(COLORS.loungerFrame);
+    g.rect(slot.x + slot.w - 6 - leg, legTop, leg, legHeight).fill(COLORS.loungerFrame);
+    g.rect(slot.x + 2, backY + thick, leg, layout.deckY - backY - thick).fill({
+      color: COLORS.loungerFrame,
+      alpha: 0.85,
     });
-    g.rect(slot.x + 6, slot.y + slot.h, 4, 8).fill(COLORS.loungerFrame);
-    g.rect(slot.x + slot.w - 10, slot.y + slot.h, 4, 8).fill(COLORS.loungerFrame);
   }
 
   // The gate: a changing hut with a door.
+  //
+  // The agents come in and go out through it. It was lost once, when the
+  // loungers were redrawn, and the agents walked out of an empty corner.
   const gate = layout.gate;
   g.rect(gate.x, gate.y, gate.w, gate.h).fill(COLORS.gate);
   g.rect(gate.x - 6, gate.y, gate.w + 12, 14).fill(COLORS.gateRoof);
@@ -139,12 +248,35 @@ export function drawDeck(g: Graphics, layout: PoolLayout, palette: Palette): voi
   );
   g.circle(gate.x + gate.w * 0.64, gate.y + gate.h * 0.7, 3).fill(0xf7e6a0);
 
+  // The handrails of the ladder, above the water.
+  //
+  // They are short and they curve over the edge, the way the grab rails of
+  // a pool ladder do. There was nothing there at all: the characters
+  // climbed down at an empty corner of the pool.
+  {
+    const ladder = layout.ladder;
+    const rail = Math.max(3, Math.round(layout.characterHeight * 0.05));
+    const topY = layout.deckY - Math.round(layout.characterHeight * 0.28);
+    for (const x of [ladder.x + 3, ladder.x + ladder.w - 3 - rail]) {
+      // The rail curves over the edge.
+      //
+      // The curve is a path of its own: in PixiJS a shape that follows
+      // another one without a stroke in between joins it, and the rail
+      // came out as a line across the sky.
+      g.beginPath();
+      g.moveTo(x, topY + rail);
+      g.arc(x + rail / 2, topY + rail, rail * 1.5, Math.PI, 0);
+      g.stroke({ width: rail, color: 0xa8b6c0, cap: 'round' });
+      g.rect(x, topY + rail, rail, layout.surfaceY - topY - rail + 4).fill(0xa8b6c0);
+    }
+  }
+
   // A parasol on the deck.
-  const parasolX = layout.loungers[Math.floor(layout.loungers.length / 2)]?.x ?? layout.width / 2;
-  g.rect(parasolX + 20, layout.deckY - layout.characterHeight * 0.9, 4, layout.characterHeight * 0.9).fill(
+  const parasol = parasolX(layout);
+  g.rect(parasol + 20, layout.deckY - layout.characterHeight * 0.9, 4, layout.characterHeight * 0.9).fill(
     0x9c7a52,
   );
-  g.ellipse(parasolX + 22, layout.deckY - layout.characterHeight * 0.9, 34, 12).fill(COLORS.parasol);
+  g.ellipse(parasol + 22, layout.deckY - layout.characterHeight * 0.9, 34, 12).fill(COLORS.parasol);
 
   // The lamps around the pool, and the light they put on the deck.
   if (palette.lamps) {
@@ -194,6 +326,28 @@ export function drawFloor(g: Graphics, layout: PoolLayout, palette: Palette): vo
     alpha: 0.5,
   });
 
+  // The tiles of the floor.
+  //
+  // The floor used to be a flat colour with a line along it, so the depth
+  // of the pool was only implied. The tiles are what make it visible: the
+  // lines across the pool follow the slope, and the lines along it are at
+  // even depths.
+  const tile = Math.max(20, Math.round(layout.characterHeight * 0.62));
+  for (let x = water.x; x < water.x + water.w; x += tile) {
+    const y0 = poolFloorY(layout, x);
+    const y1 = poolFloorY(layout, Math.min(water.x + water.w, x + tile));
+    g.moveTo(x, y0)
+      .lineTo(x + tile, y1)
+      .stroke({ width: 1.5, color: 0x6fb0cf, alpha: 0.75 });
+  }
+  for (let y = water.y + tile; y < layout.height; y += tile) {
+    const left = poolLeftAtDepth(layout, y);
+    if (left >= water.x + water.w) break;
+    g.moveTo(left, y)
+      .lineTo(water.x + water.w, y)
+      .stroke({ width: 1.5, color: 0x6fb0cf, alpha: 0.55 });
+  }
+
   // The lane lines are painted on the floor of the pool, so they follow
   // the slope of it.
   g.moveTo(water.x, shallow - 3)
@@ -203,6 +357,54 @@ export function drawFloor(g: Graphics, layout: PoolLayout, palette: Palette): vo
   // The depth markers, along the floor.
   for (let x = water.x + 40; x < water.x + water.w - 40; x += 120) {
     g.rect(x, poolFloorY(layout, x) - 9, 22, 5).fill({ color: 0x1c5a7d, alpha: 0.85 });
+  }
+
+  // The weeds at the deep end, and the drain.
+  {
+    const deep = poolFloorY(layout, water.x + water.w);
+    for (let index = 0; index < 9; index += 1) {
+      const x = water.x + water.w - 30 - ((index * 37) % 130);
+      const floor = poolFloorY(layout, x);
+      const height = 22 + ((index * 53) % 34);
+      const spread = ((index * 29) % 16) - 8;
+      for (let blade = 0; blade < 3; blade += 1) {
+        const lean = spread + blade * 5 - 5;
+        g.moveTo(x + blade * 3, floor - 2)
+          .quadraticCurveTo(
+            x + blade * 3 + lean,
+            floor - height * 0.6,
+            x + blade * 3 + lean * 1.6,
+            floor - height,
+          )
+          .stroke({ width: 2.4, color: 0x2f7d5c, alpha: 0.55, cap: 'round' });
+      }
+    }
+    // The drain at the deepest point.
+    g.ellipse(water.x + water.w - 40, deep - 3, 13, 4).fill({
+      color: 0x2b6f92,
+      alpha: 0.8,
+    });
+    g.ellipse(water.x + water.w - 40, deep - 4, 9, 2.6).fill({
+      color: 0x14486a,
+      alpha: 0.9,
+    });
+  }
+
+  // The ladder.
+  //
+  // The characters walk to the ladder and climb down there, and there was
+  // nothing there to climb: it was in the layout from the beginning and it
+  // was never drawn.
+  const ladder = layout.ladder;
+  const rail = Math.max(3, Math.round(layout.characterHeight * 0.05));
+  const foot = poolFloorY(layout, ladder.x + ladder.w / 2);
+  g.rect(ladder.x + 2, water.y, rail, foot - water.y).fill({ color: 0xb9c6cf, alpha: 0.9 });
+  g.rect(ladder.x + ladder.w - 2 - rail, water.y, rail, foot - water.y).fill({
+    color: 0xb9c6cf,
+    alpha: 0.9,
+  });
+  for (let y = water.y + 8; y < foot - 4; y += Math.max(10, layout.characterHeight * 0.16)) {
+    g.rect(ladder.x + 2, y, ladder.w - 4, rail * 0.8).fill({ color: 0xa8b6c0, alpha: 0.85 });
   }
 }
 
@@ -323,6 +525,53 @@ export function drawWater(g: Graphics, layout: PoolLayout, palette: Palette): vo
       // but the deeper it is the less of the floor comes through.
       alpha: 0.5 + 0.25 * t,
     });
+  }
+
+  // The reflection of the deck in the water.
+  //
+  // The loungers and the parasol are on the terrace above the water, and
+  // the water shows them: a soft band of colour under each of them, and a
+  // band of sky in between. It is what makes the water a surface and not a
+  // rectangle.
+  for (const slot of layout.loungers) {
+    g.roundRect(
+      slot.x + 4,
+      water.y + 2,
+      slot.w - 8,
+      Math.max(3, layout.characterHeight * 0.1),
+      3,
+    ).fill({ color: COLORS.lounger, alpha: 0.16 });
+  }
+  {
+    const parasol = parasolX(layout);
+    g.roundRect(
+      parasol - 6,
+      water.y + 2,
+      Math.max(24, layout.characterHeight * 0.4),
+      Math.max(3, layout.characterHeight * 0.08),
+      3,
+    ).fill({ color: COLORS.parasol, alpha: 0.16 });
+  }
+
+  // The lane ropes.
+  //
+  // A lane rope lies across the pool, away from the person looking at it,
+  // so in a side view it is a short string of floats running away from the
+  // edge. The floats were stacked downwards, and they came out as a
+  // thermometer stuck in the water.
+  for (let index = 1; index < layout.lanes.length; index += 1) {
+    const x = layout.lanes[index].x;
+    const reach = Math.max(18, layout.characterHeight * 0.42);
+    for (let k = 0; k < 7; k += 1) {
+      // The rope runs away from the edge, so it gets shorter and fainter.
+      const along = (k / 6) * reach;
+      const y = water.y + 3 + along * 0.22;
+      const size = 3.4 - along * 0.06;
+      g.ellipse(x, y, size, size * 0.8).fill({
+        color: k % 2 === 0 ? 0xe8574a : 0xf5f2ea,
+        alpha: 0.95 - k * 0.08,
+      });
+    }
   }
 }
 

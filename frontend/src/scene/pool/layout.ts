@@ -70,12 +70,60 @@ export const LOUNGER_COUNT = 6;
 export const WAITING_COUNT = 4;
 
 /**
+ * Where the parasol stands, in world pixels.
+ *
+ * It used to stand in the middle of the deck, which is where a lounger is,
+ * and it stood in front of the figure that was sitting there.
+ */
+export function parasolX(layout: PoolLayout): number {
+  const last = layout.loungers[layout.loungers.length - 1];
+  if (!last) return layout.width / 2;
+  return Math.min(layout.width - 40, last.x + last.w + Math.round(layout.characterHeight * 0.3));
+}
+
+/**
+ * How much of the deck one lounger needs, in characters.
+ *
+ * A figure that lies down is as long as it is tall, and the lounger has to
+ * be longer than the figure, or the figure hangs off the end of it. It used
+ * to be 1.3, and the lounger was drawn at 0.62 of a character: the figure
+ * was twice as long as its bed, which is why the pool looked like a heap of
+ * limbs on top of a row of orange slabs.
+ */
+export const LOUNGER_PER_CHARACTER = 1.2;
+
+/**
  * Below this width the canvas is a phone.
  *
  * The picture on a phone is small, so the scene shows fewer characters and
  * shows them bigger, and the text is left to the list beside the pool.
  */
 export const PHONE_WIDTH = 640;
+
+/**
+ * The smallest a figure may be drawn and still be read.
+ *
+ * Below this the pool stops being a picture of people and becomes a row
+ * of dots, so the deck takes fewer loungers instead.
+ */
+export const MIN_READABLE_CHARACTER = 64;
+
+/**
+ * The height of the seat of a lounger, in world pixels.
+ *
+ * The figure leans back on the lounger, so it sits at the height of the
+ * seat and not at the height of the deck.
+ */
+export function loungerSeatY(layout: PoolLayout): number {
+  return layout.deckY - Math.round(layout.characterHeight * 0.22);
+}
+
+/**
+ * The height of the top of the back rest of a lounger, in world pixels.
+ */
+export function loungerBackY(layout: PoolLayout): number {
+  return layout.deckY - Math.round(layout.characterHeight * 0.72);
+}
 
 /**
  * How deep the pool is at its shallow end, as a part of its depth.
@@ -157,14 +205,10 @@ export function computeLayout(
   const waiting_ = Math.max(0, Math.round(waitingCount));
   const w = Math.max(320, width);
   const h = Math.max(240, height);
-  // On a phone the deck has no room for every lounger, so the scene draws
-  // a few of them and the characters become bigger.
-  const loungers_ = loungersFor(w, loungerCount);
 
   // The character is as big as the height of the window allows, but it
   // also has to fit on the deck: there is one lounger per character and
-  // the characters may not lie on top of each other. On a narrow window
-  // the character is the thing that has to give way.
+  // the characters may not lie on top of each other.
   const deckSpace = (charHeight: number): number => {
     const gate = Math.round(charHeight * 0.9);
     const left = gate + Math.round(charHeight * 0.6);
@@ -175,26 +219,40 @@ export function computeLayout(
     return Math.max(0, end - start);
   };
   const wanted = Math.round(Math.min(Math.max(h * 0.16, 64), 128));
-  let characterHeight = wanted;
-  if (w < PHONE_WIDTH) {
-    // On a phone the character is the thing that has to be read, so it
-    // takes the room the fewer loungers leave free. The size is searched
-    // for, because a smaller character leaves more room on the deck: the
-    // one-pass estimate below would shrink it to the floor instead.
-    characterHeight = 40;
+
+  /**
+   * The biggest character that fits on `count` loungers.
+   *
+   * The size is searched for, because a smaller character leaves more
+   * room on the deck: the one-pass estimate would shrink it to the floor
+   * instead.
+   */
+  const sizeFor = (count: number): number => {
+    let best = 40;
     for (let candidate = 40; candidate <= wanted; candidate += 1) {
-      const perLounger = deckSpace(candidate) / Math.max(1, loungers_);
-      // A character lies on its side, so it is as wide as it is tall.
-      const fits = Math.floor(perLounger / 1.3);
-      if (fits >= candidate) characterHeight = candidate;
+      const perLounger = deckSpace(candidate) / Math.max(1, count);
+      // A character lies on its side, so it is as long as it is tall, and
+      // the lounger it lies on has to be longer than that.
+      const fits = Math.floor(perLounger / LOUNGER_PER_CHARACTER);
+      if (fits >= candidate) best = candidate;
     }
-  } else {
-    const perLounger = deckSpace(characterHeight) / Math.max(1, loungers_);
-    // A character lies on its side, so it is as wide as it is tall: that is
-    // the width it needs on a lounger. Two of them that are too wide lie on
-    // top of each other, and then the pool is one brown lump.
-    const fits = Math.floor(perLounger / 1.3);
-    characterHeight = Math.max(40, Math.min(characterHeight, fits));
+    return best;
+  };
+
+  /**
+   * How many loungers the deck has.
+   *
+   * The deck cannot hold all of them on a narrow canvas, and the figures
+   * are what has to be read: a canvas that is too narrow for six loungers
+   * gets fewer of them, so that the people on them stay big enough to
+   * see. The agents that have no lounger wait at the edge of the pool,
+   * which the scene already knows how to do.
+   */
+  let loungers_ = loungersFor(w, loungerCount);
+  let characterHeight = sizeFor(loungers_);
+  while (characterHeight < MIN_READABLE_CHARACTER && loungers_ > 2) {
+    loungers_ -= 1;
+    characterHeight = sizeFor(loungers_);
   }
 
   const deckY = Math.round(h * 0.4);
@@ -236,12 +294,15 @@ export function computeLayout(
   // The loungers run along the deck, from just after the gate to the ladder.
   const loungerStart = waterLeft + Math.round(characterHeight * 0.25);
   const loungerEnd = waterRight - ladderWidth - Math.round(characterHeight * 0.4);
-  // The lounger is as wide as a character needs it, but never so wide that
-  // two of them overlap on a small canvas.
+  // The lounger is longer than the figure that lies on it, but never so
+  // long that two of them overlap on a small canvas.
   const loungerSpace = Math.max(0, loungerEnd - loungerStart);
   const loungerWidth = Math.max(
     8,
-    Math.min(Math.round(characterHeight * 0.62), Math.floor((loungerSpace / loungers_) * 0.75)),
+    Math.min(
+      Math.round(characterHeight * 1.15),
+      Math.floor((loungerSpace / loungers_) * 0.85),
+    ),
   );
   const loungerGap = Math.max(
     6,
@@ -319,11 +380,11 @@ export function computeLayout(
  * height of the old pool would float in the sky.
  */
 export function swimYFor(layout: PoolLayout, laneOffset: number): number {
-  return (
-    layout.surfaceY -
-    layout.characterHeight * 0.06 +
-    laneOffset * layout.characterHeight * 0.16
-  );
+  // The centre line of the body is at the waterline, so that the water
+  // cuts the figure in half: the back and the head are out of it and the
+  // rest is in. The line used to be a little above the water, and the
+  // whole figure lay on the coping like a body on a slab.
+  return layout.surfaceY + laneOffset * layout.characterHeight * 0.16;
 }
 
 /**
@@ -366,10 +427,16 @@ export function resolveWaypoint(
     const index = Number(waypoint.slice('lounger:'.length));
     const slot = layout.loungers[index];
     if (!slot) return null;
-    // A lounging character lies with its feet towards the lounger's middle,
-    // so the body spans the slot instead of starting at it.
+    // The feet go to the low end of the lounger, and the figure leans back
+    // from there over the seat and the back rest. It used to lie along the
+    // lounger, which is a body seen from above and not a person at rest.
+    // The character walks to the lounger along the deck, and sits down
+    // when it gets there.
+    //
+    // It sits just in front of the back rest: the head leans back against
+    // the back rest from there, and the legs run along the seat.
     return {
-      x: slot.x + slot.w / 2 - layout.characterHeight * 0.42,
+      x: slot.x + Math.round(slot.w * 0.36),
       y: layout.deckY,
     };
   }

@@ -33,6 +33,61 @@ function makePool(count: number): Particle[] {
   }));
 }
 
+/**
+ * The splash of a hand going into the water.
+ *
+ * A swimmer whose hand goes under the water pushes some of it up. It is
+ * the difference between a figure in the water and a figure *in* the water,
+ * and it is the event the scene listens for.
+ */
+export class Splash {
+  readonly container = new Container();
+  private graphics = new Graphics();
+  private pool = makePool(60);
+  private next = 0;
+
+  constructor() {
+    this.container.addChild(this.graphics);
+  }
+
+  /** Push some water up at the given place. */
+  emit(x: number, y: number, strength = 1): void {
+    const count = Math.min(6, Math.max(2, Math.round(strength * 4)));
+    for (let index = 0; index < count; index += 1) {
+      const particle = this.pool[this.next];
+      this.next = (this.next + 1) % this.pool.length;
+      particle.alive = true;
+      particle.x = x + (Math.random() - 0.5) * 8;
+      particle.y = y;
+      // The drops go up and to the side, and they fall back.
+      particle.vx = (Math.random() - 0.5) * 46 * strength;
+      particle.vy = -(26 + Math.random() * 30) * strength;
+      particle.life = 0;
+      particle.maxLife = 0.5 + Math.random() * 0.4;
+      particle.size = 1.4 + Math.random() * 1.8;
+    }
+  }
+
+  update(dt: number): void {
+    this.graphics.clear();
+    for (const particle of this.pool) {
+      if (!particle.alive) continue;
+      particle.life += dt;
+      if (particle.life >= particle.maxLife) {
+        particle.alive = false;
+        continue;
+      }
+      particle.vy += 320 * dt;
+      particle.x += particle.vx * dt;
+      particle.y += particle.vy * dt;
+      const fade = 1 - particle.life / particle.maxLife;
+      this.graphics
+        .circle(particle.x, particle.y, particle.size * (0.5 + fade * 0.5))
+        .fill({ color: 0xffffff, alpha: 0.75 * fade });
+    }
+  }
+}
+
 /** Steam wisps rising from a cup. */
 export class Steam {
   readonly container = new Container();

@@ -38,16 +38,29 @@ interface Controls {
   reactionU: number;
   playing: boolean;
   skeleton: boolean;
+  trace: boolean;
 }
+
+/**
+ * How long the trace shows, in seconds.
+ *
+ * Long enough to see several strokes, and to see that the trace does not
+ * come back to the same place.
+ */
+const TRACE_SECONDS = 20;
+/** How many samples the trace holds. */
+const TRACE_SAMPLES = 400;
 
 export function Lab() {
   const hostRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLCanvasElement>(null);
   const controlsRef = useRef<Controls>({
     phase: 0,
     activityU: 0.4,
     reactionU: 0.35,
     playing: true,
     skeleton: false,
+    trace: true,
   });
   const [controls, setControls] = useState<Controls>(controlsRef.current);
   const [dump, setDump] = useState('');
@@ -95,6 +108,17 @@ export function Lab() {
         backdrop.rect(0, 0, 4000, 220).fill('#12314a');
         backdrop.rect(0, 220, 4000, 4000).fill('#c9b79a');
         scene.addChild(backdrop);
+
+        /**
+         * The trace of the first swimmer.
+         *
+         * Two lines: the shoulder angle, which is the stroke, and the
+         * height of the body, which is the stroke plus the noise it rides
+         * on. A periodic stroke draws a clean wave; the line with the noise
+         * on it wanders, and that is the whole point of the chart.
+         */
+        const strokeTrace: number[] = [];
+        const rideTrace: number[] = [];
 
         const swimmers: CharacterAnimator[] = [];
         SWIM_ORDER.forEach((style, i) => {
@@ -181,6 +205,15 @@ export function Lab() {
             if (!c.playing) a.setPhase(c.phase);
             a.update(dt);
           }
+
+          // The trace of the first swimmer.
+          if (c.trace && swimmers[0]) {
+            const pose = swimmers[0].currentPose;
+            strokeTrace.push(pose.armR);
+            rideTrace.push(pose.bob);
+            while (strokeTrace.length > TRACE_SAMPLES) strokeTrace.shift();
+            while (rideTrace.length > TRACE_SAMPLES) rideTrace.shift();
+          }
           for (const a of loungers) {
             // Always force the activity in the lab so every variant is visible.
             a.forceActivity(c.activityU);
@@ -189,6 +222,50 @@ export function Lab() {
           for (const r of reactions) {
             r.animator.scrubReaction(r.kind, c.reactionU);
             r.animator.update(dt);
+          }
+
+          // The chart of the motion.
+          const chart = chartRef.current;
+          const context = chart?.getContext('2d');
+          if (chart && context) {
+            const width = chart.width;
+            const height = chart.height;
+            context.clearRect(0, 0, width, height);
+            context.fillStyle = '#0d1b26';
+            context.fillRect(0, 0, width, height);
+            if (c.trace) {
+              // The grid.
+              context.strokeStyle = 'rgba(143, 211, 244, 0.16)';
+              context.lineWidth = 1;
+              for (let line = 1; line < 4; line += 1) {
+                const y = (height * line) / 4;
+                context.beginPath();
+                context.moveTo(0, y);
+                context.lineTo(width, y);
+                context.stroke();
+              }
+              const draw = (values: number[], scale: number, colour: string) => {
+                if (values.length < 2) return;
+                context.strokeStyle = colour;
+                context.lineWidth = 1.5;
+                context.beginPath();
+                values.forEach((value, index) => {
+                  const x = (index / (TRACE_SAMPLES - 1)) * width;
+                  const y = height / 2 - value * scale;
+                  if (index === 0) context.moveTo(x, y);
+                  else context.lineTo(x, y);
+                });
+                context.stroke();
+              };
+              // The stroke: the primary layer, which is a cycle on purpose.
+              draw(strokeTrace, height * 0.16, '#8fd3f4');
+              // The ride: the stroke and the noise on top of it.
+              draw(rideTrace, height * 9, '#ffd166');
+            }
+            context.fillStyle = 'rgba(223, 242, 255, 0.8)';
+            context.font = '11px monospace';
+            context.fillText('stroke (blue)   ride on the stroke (amber)', 8, 14);
+            context.fillText(`${TRACE_SECONDS}s`, width - 34, height - 8);
           }
 
           skeletonGraphics.clear();
@@ -261,6 +338,9 @@ export function Lab() {
   return (
     <div className="lab">
       <div className="lab-stage" ref={hostRef} />
+      <div className="lab-trace">
+        <canvas ref={chartRef} width={900} height={130} />
+      </div>
       {error ? <pre className="lab-error">init failed: {error}</pre> : null}
       <div className="lab-controls">
         <label>
@@ -311,6 +391,14 @@ export function Lab() {
             onChange={(e) => update({ skeleton: e.target.checked })}
           />
           skeleton
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={controls.trace}
+            onChange={(e) => update({ trace: e.target.checked })}
+          />
+          motion trace
         </label>
         <pre className="lab-dump">{dump}</pre>
       </div>

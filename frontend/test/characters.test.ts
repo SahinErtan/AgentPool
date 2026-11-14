@@ -188,23 +188,23 @@ test('every swim style gives a finite pose', () => {
 });
 
 test('every other pose gives a finite pose', () => {
-  const spec = specFor('sub:pose-check');
   const pose = zeroPose();
   for (let step = 0; step < 100; step += 1) {
     const t = step / 100;
-    assertFinitePose(restPose(pose, t), `rest at ${t}`);
-    assertFinitePose(loungePose(pose, t), `lounge at ${t}`);
+    const motion = { t, seed: 1 };
+    assertFinitePose(restPose(pose, motion), `rest at ${t}`);
+    assertFinitePose(loungePose(pose, motion), `lounge at ${t}`);
     assertFinitePose(walkPose(pose, t), `walk at ${t}`);
     assertFinitePose(climbPose(pose, t), `climb at ${t}`);
     for (const activity of ['tea', 'book', 'phone', 'sunbathe', 'nap', 'stretch', 'chat'] as const) {
-      assertFinitePose(activityPose(pose, activity, t, spec), `${activity} at ${t}`);
+      assertFinitePose(activityPose(pose, activity, t, motion), `${activity} at ${t}`);
     }
   }
 });
 
 test('blending two poses gives a finite pose', () => {
   const a = walkPose(zeroPose(), 0.3);
-  const b = loungePose(zeroPose(), 0.7);
+  const b = loungePose(zeroPose(), { t: 0.7, seed: 1 });
   const out = blendPose(zeroPose(), a, 0.5, b, 0.5);
   assertFinitePose(out, 'the blend');
 });
@@ -248,7 +248,197 @@ test('the underwater rig gets the same transforms as the surface rig', () => {
   }
 });
 
-/* --- 7. the idle activities do not run in lockstep -------------------- */
+/* --- 7. the characters do not run in lockstep ------------------------- */
+
+test('two characters do not breathe at the same moment', () => {
+  // The scene used to hand one clock to everybody, so a row of loungers
+  // was a row of figures breathing in step. Each character has its own
+  // clock and its own noise now.
+  const one = new CharacterAnimator(buildRig(specFor('sub:breath-1')));
+  const two = new CharacterAnimator(buildRig(specFor('sub:breath-2')));
+
+  const first: number[] = [];
+  const second: number[] = [];
+  for (let frame = 0; frame < 300; frame += 1) {
+    one.setState('resting');
+    two.setState('resting');
+    one.update(16.67);
+    two.update(16.67);
+    first.push(one.currentPose.bob);
+    second.push(two.currentPose.bob);
+  }
+
+  // Two characters must not trace the same curve.
+  let alike = 0;
+  for (let frame = 0; frame < first.length; frame += 1) {
+    if (Math.abs(first[frame] - second[frame]) < 1e-6) alike += 1;
+  }
+  assert.ok(alike < 5, `the two characters breathed together ${alike} times`);
+
+  // And neither of them may stand still: a figure that does not move at
+  // all reads as a picture, not as a person.
+  const firstRange = Math.max(...first) - Math.min(...first);
+  const secondRange = Math.max(...second) - Math.min(...second);
+  assert.ok(firstRange > 1e-5, `the first character never moved (${firstRange})`);
+  assert.ok(secondRange > 1e-5, `the second character never moved (${secondRange})`);
+});
+
+test('a character breathes on its own clock', () => {
+  const animator = new CharacterAnimator(buildRig(specFor('sub:own-clock')));
+  animator.setState('resting');
+  const first = animator.currentPose.bob;
+  for (let frame = 0; frame < 60; frame += 1) animator.update(16.67);
+  assert.notEqual(animator.currentPose.bob, first, 'the character never moved');
+});
+
+/* --- 8. the sign of the angles ----------------------------------------- */
+
+test('a positive angle points the limb forwards', () => {
+  // The angles are written the way a person thinks about them: a positive
+  // angle is towards the way the figure is facing. The rig applies them
+  // the other way round, because PixiJS turns a limb that hangs downwards
+  // backwards. The negation was missing for a long time, and every limb
+  // in the pool was backwards: the crawl reached behind the swimmer, the
+  // knee of the walk bent on the wrong half of the stride, and the wave
+  // pointed at the deck.
+  const spec = specFor('sub:sign-convention');
+  const rig = buildRig(spec);
+  const animator = new CharacterAnimator(rig);
+  animator.setState('resting');
+  for (let frame = 0; frame < 30; frame += 1) animator.update(16.67);
+
+  const pose = animator.currentPose;
+  // The rest pose holds the left arm a little forwards and the right one
+  // a little back.
+  assert.ok(pose.armL > 0, 'the rest pose does not hold the left arm forwards');
+  assert.ok(pose.armR < 0, 'the rest pose does not hold the right arm back');
+
+  const leftShoulder = rig.armL.getGlobalPosition();
+  const leftHand = rig.handL.getGlobalPosition();
+  assert.ok(
+    leftHand.x > leftShoulder.x,
+    `the left hand is behind the shoulder (${leftHand.x} and ${leftShoulder.x})`,
+  );
+
+  const rightShoulder = rig.armR.getGlobalPosition();
+  const rightHand = rig.handR.getGlobalPosition();
+  assert.ok(
+    rightHand.x < rightShoulder.x,
+    `the right hand is in front of the shoulder (${rightHand.x} and ${rightShoulder.x})`,
+  );
+});
+
+test('no stroke jumps', () => {
+  // The crawl takes the arm all the way round: forward under the water,
+  // back along the hip, up over the water and in again. The angle sweeps a
+  // whole turn, and it has to sweep it the right way round — a jump of
+  // more than a radian between two frames means the path wrapped itself
+  // the wrong way and the arm would snap.
+  const spec = specFor('sub:stroke-jump');
+  for (const [name, style] of Object.entries(SWIM_STYLES)) {
+    const pose = zeroPose();
+    let previous = 0;
+    for (let step = 0; step < 400; step += 1) {
+      style.fn(pose, step / 400, spec);
+      if (step > 0) {
+        const jump = Math.abs(pose.armR - previous);
+        assert.ok(
+          jump < 1,
+          `${name} jumps by ${jump.toFixed(2)} radians between two frames`,
+        );
+      }
+      previous = pose.armR;
+      assert.ok(
+        pose.elbowR >= 0,
+        `${name} bends the elbow the wrong way (${pose.elbowR})`,
+      );
+    }
+  }
+});
+
+test('a swimmer stays flat in the water', () => {
+  // In a side view the roll of the body is a tilt in the picture. A roll
+  // of a quarter of a radian lifted the swimmer out of the water.
+  const spec = specFor('sub:flat-swimmer');
+  for (const [name, style] of Object.entries(SWIM_STYLES)) {
+    const pose = zeroPose();
+    for (let step = 0; step < 200; step += 1) {
+      style.fn(pose, step / 200, spec);
+      const tilt = Math.abs(pose.bodyRoll) + Math.abs(pose.bodyPitch);
+      assert.ok(tilt < 0.3, `${name} tilts the swimmer by ${tilt.toFixed(2)} radians`);
+    }
+  }
+});
+
+test('the knees bend backwards', () => {
+  // A knee bends so that the heel comes up towards the butt. It does not
+  // bend forwards.
+  for (const [name, style] of Object.entries(SWIM_STYLES)) {
+    const pose = zeroPose();
+    for (let step = 0; step < 200; step += 1) {
+      style.fn(pose, step / 200, specFor('sub:knee-check'));
+      assert.ok(
+        pose.kneeL <= 0.001 && pose.kneeR <= 0.001,
+        `${name} bends the knee forwards (${pose.kneeL})`,
+      );
+    }
+  }
+});
+
+test('a character wears only its own accessory', () => {
+  // The goggles, the snorkel and the floatie used to be drawn on every
+  // character, whatever it had been given.
+  const cases = [
+    ['none', { hat: false, goggles: false, snorkel: false, floatie: false }],
+    ['cap', { hat: true, goggles: false, snorkel: false, floatie: false }],
+    ['sunhat', { hat: true, goggles: false, snorkel: false, floatie: false }],
+    ['goggles', { hat: false, goggles: true, snorkel: false, floatie: false }],
+    ['snorkel', { hat: false, goggles: false, snorkel: true, floatie: false }],
+    ['floatie', { hat: false, goggles: false, snorkel: false, floatie: true }],
+  ] as const;
+  for (const [accessory, expected] of cases) {
+    const rig = buildRig(specFor(`sub:accessory-${accessory}`, 'subagent', { accessory }));
+    for (const key of Object.keys(expected) as (keyof typeof expected)[]) {
+      assert.equal(
+        rig.accessories[key].visible,
+        expected[key],
+        `a character with ${accessory} shows its ${key}: ${rig.accessories[key].visible}`,
+      );
+    }
+  }
+});
+
+test('the head hangs from the neck', () => {
+  // The head used to pivot about its own middle, so it was a ball
+  // floating above the shoulders. It hangs from the neck now.
+  const spec = specFor('sub:neck');
+  const rig = buildRig(spec);
+  const neck = rig.headPivot.getGlobalPosition();
+  const head = rig.headGroup.getGlobalPosition();
+  assert.ok(
+    head.y < neck.y,
+    `the head is not above the neck (${head.y} and ${neck.y})`,
+  );
+});
+
+test('the walk follows the distance and not the clock', () => {
+  // A character that is held up by another one used to keep walking its
+  // legs on the spot: the stride was a free-running timer.
+  const animator = new CharacterAnimator(buildRig(specFor('sub:stride')));
+  animator.setState('walking');
+
+  const before = animator.walkCycle;
+  animator.advanceWalk(0);
+  assert.equal(animator.walkCycle, before, 'the walk moved without any ground covered');
+  animator.advanceWalk(0.5);
+  const after = animator.walkCycle;
+  assert.ok(
+    Math.abs(after - before) > 0.4 && Math.abs(after - before) < 0.6,
+    `the walk did not follow the distance (${before} and ${after})`,
+  );
+});
+
+/* --- 9. the idle activities do not run in lockstep -------------------- */
 
 test('two characters with the same activity do not start it together', () => {
   const first = specFor('sub:twin-1');

@@ -45,12 +45,19 @@ export interface ArchetypeSpec {
   girth: number;
 }
 
+/**
+ * The proportions of the archetypes.
+ *
+ * The heads used to be too big: at the size a figure is drawn on the deck
+ * the head was a third of the whole figure, and the figure read as a
+ * child with a ball on its shoulders.
+ */
 export const ARCHETYPES: Record<Archetype, ArchetypeSpec> = {
-  bean: { leg: 0.22, torso: 0.42, arm: 0.26, headR: 0.17, hipWidth: 1.0, shoulderWidth: 1.0, girth: 1.15 },
-  pear: { leg: 0.3, torso: 0.38, arm: 0.28, headR: 0.15, hipWidth: 1.25, shoulderWidth: 0.95, girth: 1.0 },
-  tall: { leg: 0.38, torso: 0.34, arm: 0.32, headR: 0.14, hipWidth: 0.95, shoulderWidth: 0.95, girth: 0.85 },
-  squat: { leg: 0.18, torso: 0.4, arm: 0.24, headR: 0.19, hipWidth: 1.1, shoulderWidth: 1.2, girth: 1.1 },
-  round: { leg: 0.22, torso: 0.36, arm: 0.25, headR: 0.2, hipWidth: 1.05, shoulderWidth: 1.05, girth: 1.2 },
+  bean: { leg: 0.24, torso: 0.44, arm: 0.27, headR: 0.14, hipWidth: 1.0, shoulderWidth: 1.0, girth: 1.15 },
+  pear: { leg: 0.32, torso: 0.4, arm: 0.29, headR: 0.125, hipWidth: 1.25, shoulderWidth: 0.95, girth: 1.0 },
+  tall: { leg: 0.4, torso: 0.36, arm: 0.33, headR: 0.115, hipWidth: 0.95, shoulderWidth: 0.95, girth: 0.85 },
+  squat: { leg: 0.2, torso: 0.42, arm: 0.25, headR: 0.155, hipWidth: 1.1, shoulderWidth: 1.2, girth: 1.1 },
+  round: { leg: 0.24, torso: 0.38, arm: 0.26, headR: 0.165, hipWidth: 1.05, shoulderWidth: 1.05, girth: 1.2 },
 };
 
 /** Curated skin tones — a hand-picked ramp, never a random hue. */
@@ -94,6 +101,15 @@ export interface CharacterSpec {
   idleCooldown: number;
   /** Phase offset so no two characters animate in lockstep. */
   phaseOffset: number;
+  /**
+   * The seed of this character's own noise.
+   *
+   * The noise is what makes a character move like a person rather than like
+   * a machine: it draws the breath, the weight shift and the head drift.
+   * It comes from its own stream, so adding it did not move a single one
+   * of the values above.
+   */
+  noiseSeed: number;
   /** Stroke speed multiplier. */
   speedScale: number;
   /** True when the character faces left. */
@@ -236,6 +252,9 @@ export function specFor(
   const idleActivity = weightedPick(rngFor(agentId, 'activity'), ACTIVITY_TABLE);
 
   const motionRng = rngFor(agentId, 'motion');
+  // The noise has its own stream: the values above are pinned by the
+  // tests, and a new channel must not move them.
+  const noiseSeed = Math.floor(rngFor(agentId, 'motion-noise')() * 0x7fffffff);
   return {
     seed,
     archetype,
@@ -254,6 +273,7 @@ export function specFor(
     speedScale: 0.85 + motionRng() * 0.35,
     flip: motionRng() < 0.5,
     blinkInterval: 2 + motionRng() * 4,
+    noiseSeed,
     ...overrides,
   };
 }

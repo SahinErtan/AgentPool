@@ -486,6 +486,138 @@ unprompted.
 - A release: `make release` builds the plugin and the frontend and packs
   them.
 
+## Sprint 19 — the pool that looks like a pool
+
+The pool worked and the picture did not. Asked to look at the scene rather
+than the code, the answer was that the figures were heaps of disconnected
+shapes, that the loungers were orange slabs the figures were not on, and
+that the lower half of the water was an empty gradient.
+
+The measurements are below. Everything in this sprint is in the frontend;
+the backend, the scene contract and the wire protocol are untouched.
+
+### 41. Every limb in the pool was backwards
+
+The pose angles are written the way a person thinks about them: a positive
+angle is towards the way the figure is facing. `poses.ts` says so, and says
+that the rig applies `rotation = -angle` — and the rig never did. PixiJS
+turns a limb that hangs downwards *backwards*, so every angle in the
+project was the wrong way round.
+
+**What it did:** the crawl reached behind the swimmer instead of in front,
+the knee of the walk bent on the wrong half of the stride, the wave
+pointed at the deck, and the figure that lay on a lounger was a bundle of
+sticks.
+
+**How:** the rig applies the negation, and `characters.test.ts` pins it: a
+positive arm angle has to put the hand in front of the shoulder. The knees
+were wrong in the same way and in the opposite sense: a knee bends
+*backwards*, so the bend is negative now.
+
+### 42. The figure was not on its lounger
+
+The lounger was 0.62 of a character long and the figure that lay on it was
+0.95 of a character long, so the figure was half again as long as its bed.
+The origin of a lying figure is its feet, and the body was rotated a
+quarter turn about that origin, so the body stuck *upwards* from the feet
+instead of along the lounger.
+
+**How:** a lounger is a chair with a back rest now, and it is longer than
+the figure. The figure leans back on it rather than lying flat: a body
+that is turned a quarter turn is a body seen from above, and a row of
+bodies seen from above is a row of blobs.
+
+### 43. Every character breathed at the same moment
+
+The scene handed one clock to every character, and the breathing and the
+weight shift were sine waves on that clock. A row of loungers looked like
+a row of machines.
+
+**How:** each character has its own clock and its own noise
+(`scene/characters/noise.ts`, one-dimensional value noise). The world still
+moves together — the caustics, the foam and the light are shared — but the
+people each have their own time.
+
+### 44. The motion was a wave all the way down
+
+The rule the motion is built on now:
+
+> The primary motion stays periodic where it should be — a crawl stroke
+> *is* a cycle, and making it aperiodic would look wrong. Everything
+> layered on top of it becomes aperiodic: the breath, the head drift, the
+> hair, the settle after a stroke.
+
+The secondary layer was a sinusoid, so the whole pool looped. It is noise
+and springs now (`scene/characters/spring.ts`): the head arrives a moment
+after the body, the hair a moment after the head, and the body rides on
+the stroke without riding the same way twice.
+
+**How:** the animation lab has a **motion trace**: the stroke on one line
+and the ride on the other. A stroke draws a clean wave; the ride wanders.
+That chart is the tool that answers "is this looped?".
+
+### 45. A character that is held up kept walking its legs
+
+The stride was a free-running timer, so a character that the clearance
+system stopped went on marching on the spot. The stride follows the
+distance now.
+
+### 46. The ladder was never drawn
+
+`layout.ladder` has existed since the beginning, and the characters walk
+to it and climb down there — and there was nothing to climb. It is drawn
+now, with its grab rails, going down into the deep end.
+
+### 47. Nothing was grounded
+
+Only the figure under the pointer had a mark. Every figure has a shadow
+now: a figure on the deck has one on the deck, and a swimmer has one on
+the floor of the pool, away from the surface.
+
+### 48. The pool was a flat rectangle
+
+The floor of the pool was a flat colour with a line along it, so the depth
+was only implied. It has tiles now, and the light shafts, the lane ropes,
+the weeds at the deep end and the drain. The lower half of the water is
+still the emptiest part of the picture.
+
+### 49. The figure was a stack of blocks
+
+Item 34 above, still open until now. Every part of a character had its own
+outline, and the parts only overlapped, so the outlines read as gaps. The
+limbs have no outline now, the torso is one shape with one outline, the
+head hangs from the neck instead of pivoting about its own middle, and the
+arm and the leg grow out of the body instead of being stuck onto its edge.
+
+### 50. What the observer found in the reworked pool
+
+An agent watched the reworked pool at three sizes and in the lab. What it
+found, and what was done:
+
+- **Every character wore every accessory.** The goggles, the snorkel and
+  the floatie were drawn on everybody, whatever `spec.accessory` said, and
+  they came out as a cross over every face. This was older than the
+  rework. A character wears its own accessory now, and a test says so.
+- **The gate hut was gone.** It was lost when the loungers were redrawn.
+  It is back.
+- **The swimmers lay on the coping.** The centre line of the body was
+  above the water, so nothing was cut by the waterline. It is at the
+  waterline now, and the roll of the crawl, which in a side view is a
+  tilt, no longer lifts the swimmer out of the water.
+- **The lounger hung in the air.** Its legs were eight pixels long at
+  every size, and the seat was twice as high as a hip. The legs reach the
+  deck, the seat is at the height of a hip, the figure faces the back
+  rest and its legs lie along the seat.
+- **The activities were backwards.** They had been tuned against the
+  backwards rig: the cup went to the middle of the face and the hands of
+  the sunbather stuck out of the head like horns. All eleven are written
+  again in the corrected convention, and the prop turns the right way.
+- **The lane ropes hung down into the water** like a thermometer. They
+  run away from the edge now.
+- **The labels piled up** when the characters queued at the ladder. A
+  label that would cover a more important one is left out.
+- **The parasol stood on a lounger.** It stands past the last one.
+
 ## Why this order
 
 The click first, because the plan promised it and it is the thing a person
@@ -521,7 +653,24 @@ after.
 
 Sprint 12, 13, 14 and 15 are done: the pool keeps up with reality, it
 can be reached and scripted, it is fast and reachable with the keyboard,
-and it has a history to look back at.
+and it has a history to look back at. Sprint 19 is the visual rework: the
+figures read as people, they sit on the loungers, the strokes are strokes
+and the pool is a place.
+
+What is left of Sprint 19, in the order I would take it:
+
+- **The lower half of the water.** It has tiles, light shafts, lane ropes
+  and weeds now, and it is still the emptiest part of the picture. A
+  swimmer in the deep lane, a pool toy, a bench under the water.
+- **The spine.** The butterfly's wave travels down the body in one value,
+  because the rig has no spine to bend along. Two or three segments
+  between the hip and the shoulder would make the crawl's roll and the
+  butterfly's wave right.
+- **The wake.** A hand that goes into the water pushes some of it up; the
+  water around the swimmer does not move yet.
+- **The deck.** The terrace is a flat band with vertical lines on it. It
+  wants perspective, a fence, a hedge and a towel on every lounger.
+- **The reflections.** The loungers and the parasol are not on the water.
 
 The observer that watched the dashboard through all of it found the two
 bugs that the tests did not: the characters stood at the gate and never

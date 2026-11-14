@@ -71,6 +71,35 @@ test('the loungers are on the deck and do not overlap', () => {
   }
 });
 
+test('a lounger is long enough for the figure that sits on it', () => {
+  // A figure that lies down is as long as it is tall, and the lounger has
+  // to be longer than the figure. It used to be shorter: the figure was
+  // twice as long as its bed, and the pool was a heap of limbs on a row of
+  // orange slabs.
+  for (const width of [1440, 1120, 900, 640, 390]) {
+    const layout = computeLayout(width, 900);
+    for (const slot of layout.loungers) {
+      assert.ok(
+        slot.w >= layout.characterHeight * 0.95,
+        `at ${width} the lounger is ${slot.w} and the figure is ${layout.characterHeight}`,
+      );
+    }
+  }
+});
+
+test('the ladder is in the pool', () => {
+  // The characters walk to the ladder and climb down there, and there was
+  // nothing there to climb: it was in the layout from the beginning and it
+  // was never drawn.
+  const layout = computeLayout(1120, 900);
+  assert.ok(layout.ladder.w > 0, 'the ladder has no width');
+  assert.ok(
+    layout.ladder.x >= layout.water.x && layout.ladder.x < layout.water.x + layout.water.w,
+    'the ladder is not in the pool',
+  );
+  assert.ok(layout.ladder.y >= layout.deckY, 'the ladder is under the deck');
+});
+
 test('the lanes fill the pool', () => {
   const layout = computeLayout(1200, 727);
   assert.equal(layout.lanes.length, 4);
