@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { AgentView } from '../net/types';
 import { store } from '../state/store';
 import { useStore } from '../state/useStore';
+import { cutAtWord, plainText } from '../scene/text';
+import { agentNames, projectOf } from '../scene/names';
 
 function formatTime(seconds: number | null): string {
   if (!seconds) return '—';
@@ -18,42 +20,7 @@ function formatDuration(from: number | null, to: number | null): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/**
- * The prompt of an agent is written in markdown, and the panel shows it
- * as plain text: the stars and the backticks are noise here.
- */
-export function plainText(value: string): string {
-  return value
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Cut a text at a word boundary.
- *
- * A cut in the middle of a word is unreadable, so the last word that does
- * not fit is dropped and an ellipsis says that something is missing. A
- * single word that is longer than the limit stays whole: there is no
- * word boundary inside it to cut at.
- */
-export function cutAtWord(text: string, limit: number): string {
-  if (text.length <= limit) return text;
-  const words = text.split(' ').filter(Boolean);
-  let out = '';
-  for (const word of words) {
-    if (out === '') {
-      if (word.length > limit) return word;
-      out = word;
-      continue;
-    }
-    if (out.length + 1 + word.length > limit) break;
-    out += ` ${word}`;
-  }
-  return `${out}…`;
-}
+export { cutAtWord, plainText } from '../scene/text';
 
 /** How long the Detail of an agent may get before it is cut. */
 const DETAIL_LIMIT = 160;
@@ -92,6 +59,8 @@ function Row({ label, value, title }: { label: string; value: string; title?: st
 export function Inspector() {
   const { agents, selectedId, focusTarget, focusNonce } = useStore();
   const agent = selectedId ? agents.get(selectedId) : null;
+  const names = useMemo(() => agentNames([...agents.values()]), [agents]);
+  const shown = agent ? names.get(agent.id) : undefined;
   const section = useRef<HTMLElement>(null);
 
   // The inspector takes the focus when it opens, so that the keyboard can
@@ -123,6 +92,10 @@ export function Inspector() {
   // The Detail of a session is the whole prompt, in markdown. It is cut
   // to a few lines here; the full text stays in the title of the row.
   const detailText = agent.detail ? plainText(agent.detail) : '';
+  const name = shown?.short ?? agent.label;
+  const project = projectOf(agent);
+  const promptText = agent.prompt ? plainText(agent.prompt) : '';
+  const description = agent.description ? agent.description.replace(/\s+/g, ' ').trim() : '';
 
   return (
     <section
@@ -130,7 +103,7 @@ export function Inspector() {
       ref={section}
       tabIndex={-1}
       role="region"
-      aria-label={`Details of ${agent.label}`}
+      aria-label={`Details of ${name}`}
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return;
         event.preventDefault();
@@ -139,7 +112,13 @@ export function Inspector() {
       }}
     >
       <header className="inspector__header">
-        <h2>{agent.label}</h2>
+        <div className="inspector__title">
+          <h2 title={shown?.full ?? agent.label}>{name}</h2>
+          <p className="inspector__sub">
+            {agent.kind}
+            {project ? ` · ${project}` : ''}
+          </p>
+        </div>
         <button
           type="button"
           className="inspector__close"
@@ -155,9 +134,17 @@ export function Inspector() {
         <Row label="Status" value={agent.status} />
         <Row label="Scene" value={agent.scene} />
         <Row label="Slot" value={slotOf(agent, props)} />
+        <Row label="Project" value={project ?? '—'} />
         <Row label="Session" value={agent.session_id ?? '—'} />
         <Row label="Parent" value={agent.parent_id ?? '—'} />
         <Row label="Type" value={agent.subagent_type ?? agent.tool_name ?? '—'} />
+        <Row label="Description" value={description ? cutAtWord(description, DETAIL_LIMIT) : '—'} title={description || undefined} />
+        <Row label="Activity" value={agent.activity?.trim() || '—'} />
+        <Row
+          label="Last prompt"
+          value={promptText ? cutAtWord(promptText, DETAIL_LIMIT) : '—'}
+          title={promptText || undefined}
+        />
         <Row
           label="Detail"
           value={detailText ? cutAtWord(detailText, DETAIL_LIMIT) : '—'}

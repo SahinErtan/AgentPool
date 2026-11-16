@@ -9,7 +9,9 @@
  * attribute later cannot reshuffle the characters that already exist.
  */
 
-export type SwimStyle = 'crawl' | 'breaststroke' | 'butterfly' | 'doggy';
+export type SwimStyle = 'crawl' | 'breaststroke' | 'butterfly' | 'doggy' | 'backstroke' | 'float';
+/** The styles a character is born with. Backstroke and float are only put on by the work. */
+type BornStyle = Exclude<SwimStyle, 'backstroke' | 'float'>;
 export type Accessory = 'none' | 'sunhat' | 'cap' | 'goggles' | 'floatie' | 'snorkel';
 export type IdleActivity =
   | 'none'
@@ -202,7 +204,7 @@ const ACCESSORY_TABLE: Record<Accessory, number> = {
   snorkel: 12,
 };
 
-const SWIM_TABLE: Record<SwimStyle, number> = {
+const SWIM_TABLE: Record<BornStyle, number> = {
   crawl: 34,
   breaststroke: 26,
   butterfly: 22,

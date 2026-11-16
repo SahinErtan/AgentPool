@@ -341,7 +341,10 @@ test('no stroke jumps', () => {
     for (let step = 0; step < 400; step += 1) {
       style.fn(pose, step / 400, spec);
       if (step > 0) {
-        const jump = Math.abs(pose.armR - previous);
+        // The arms of a backstroke go round a whole turn, so the step is
+        // measured the short way round the circle.
+        const raw = pose.armR - previous;
+        const jump = Math.abs(raw - Math.PI * 2 * Math.round(raw / (Math.PI * 2)));
         assert.ok(
           jump < 1,
           `${name} jumps by ${jump.toFixed(2)} radians between two frames`,

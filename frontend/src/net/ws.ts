@@ -9,6 +9,7 @@
  */
 
 import { store } from '../state/store';
+import { demoCount } from '../scene/demo/demoFeed';
 import type { ConnectionState, ServerFrame } from './types';
 import { Backoff, POLL_INTERVAL_MS, STALL_TIMEOUT_MS, StallDetector, shouldPoll } from './backoff';
 
@@ -245,6 +246,8 @@ export function connectAgentSocket(): AgentSocket {
 
 /** Tell the backend that a character has walked out through the gate. */
 export function acknowledgeExit(agentId: string): void {
+  // The demo crowd is not in the backend, so there is nobody to tell.
+  if (demoCount(window.location.search) > 0) return;
   const token = tokenFromSearch(window.location.search);
   const socket = new WebSocket(socketUrl(window.location.host, '/ws', token));
   socket.onopen = () => {

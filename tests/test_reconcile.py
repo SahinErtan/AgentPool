@@ -294,3 +294,31 @@ def test_the_agents_that_are_gone_walk_out_of_the_gate(tmp_path: Path) -> None:
     state = registry.get("wf:old")
     assert state is not None
     assert state.status is AgentStatus.LEAVING
+
+
+def test_a_session_named_on_the_disk_keeps_that_name_through_its_hooks(tmp_path: Path) -> None:
+    """The reconciler reads the name; the hooks that follow must not undo it."""
+    from agentpool.bridge.normalizer import normalize
+
+    now = time.time()
+    write_session(tmp_path, "s1", "busy", now)
+    session_file = tmp_path / "sessions" / "s1.json"
+    data = json.loads(session_file.read_text(encoding="utf-8"))
+    data["name"] = "pool-scene-3d-sprint"
+    session_file.write_text(json.dumps(data), encoding="utf-8")
+
+    registry = AgentRegistry()
+    reconcile(registry, tmp_path, use_cli=False)
+    assert registry.get("session:s1").label == "pool-scene-3d-sprint"
+
+    for payload in [
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "go"},
+        {"hook_event_name": "PreToolUse", "session_id": "s1", "tool_name": "Read",
+         "tool_use_id": "call-1", "tool_input": {"file_path": "/tmp/a.ts"}},
+        {"hook_event_name": "Stop", "session_id": "s1", "background_tasks": []},
+    ]:
+        for event in normalize(payload):
+            if isinstance(event, AgentEvent):
+                registry.apply(event)
+
+    assert registry.get("session:s1").label == "pool-scene-3d-sprint"

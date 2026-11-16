@@ -213,8 +213,16 @@ export function shortAgentId(agentId: string): string {
   return prefix ? `${prefix}:${short}` : short;
 }
 
-/** The name of the agent an event belongs to. */
-export function eventAgentName(record: HistoryRecord): string {
+/**
+ * The name of the agent an event belongs to.
+ *
+ * The name on the screen is used when the agent is still in the pool, so the
+ * panel and the pool say the same thing. The label of the record is the
+ * fallback, and the id is the last one.
+ */
+export function eventAgentName(record: HistoryRecord, names?: ReadonlyMap<string, string>): string {
+  const shown = names?.get(record.agent_id);
+  if (shown) return shown;
   const label = record.label.trim();
   return label ? label : shortAgentId(record.agent_id);
 }

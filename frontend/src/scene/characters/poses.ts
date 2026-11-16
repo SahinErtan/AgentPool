@@ -59,7 +59,76 @@ export interface Pose {
   kneeR: number;
   /** Whole-body vertical offset. */
   bob: number;
+  /**
+   * The bend of the upper back against the hips, forward positive.
+   *
+   * The 2D rig has no spine and ignores it. In 3D it carries the wave of
+   * the butterfly and the surge of the breaststroke.
+   */
+  spine: number;
+  /**
+   * The roll of the body about its own long axis.
+   *
+   * In a side view a roll can only be drawn as a tilt in the picture, so
+   * `bodyRoll` stays small for the 2D rig. This is the roll a swimmer
+   * really makes, shoulder to shoulder, and only the 3D rig reads it.
+   */
+  roll: number;
+  /**
+   * The turn of the upper body about the spine, a twist and not a roll.
+   *
+   * The shoulders and the head turn with it; the hips and the legs stay
+   * where they are, so a figure that twists its upper body stays on its
+   * lounger. Only the 3D rig reads it (Sprint 29.3 fixes): the 2D rig has no
+   * spine and ignores it.
+   */
+  torso: number;
+  /**
+   * How far each arm is lifted out to the side, away from the body.
+   *
+   * The other angles all turn in the plane of the body's front and back.
+   * A breaststroke sweeps out to the sides and a crawl brings the arm round
+   * over the water, and neither fits in that plane. The 2D rig ignores it.
+   */
+  armOutL: number;
+  armOutR: number;
+  /** How far each leg is opened out to the side. */
+  legOutL: number;
+  legOutR: number;
+  /**
+   * Squash and stretch of the whole figure.
+   *
+   * Positive stretches the figure up and thins it, negative squashes it
+   * down and thickens it; the volume stays about the same. The 2D rig
+   * ignores it: a side view has no room for it, and the 2D pool is frozen.
+   */
+  stretch: number;
+  /**
+   * The upper arm turned about its own axis: a positive twist turns the
+   * forearm in, towards the body.
+   *
+   * It lets a forearm that is bent up in front of the chest turn its palm
+   * towards the middle, which a book or a cup needs. The 2D rig ignores it.
+   */
+  armTwistL: number;
+  armTwistR: number;
+  /**
+   * The hand bent at the wrist, forward positive. The prop in the hand
+   * tilts with it, so a cup can be turned towards the mouth.
+   *
+   * The 2D rig has no wrist and ignores it.
+   */
+  wristL: number;
+  wristR: number;
 }
+
+/** The names of every field of a pose, for the code that walks them all. */
+export const POSE_KEYS: readonly (keyof Pose)[] = [
+  'rootRot', 'bodyPitch', 'bodyRoll', 'bodyY', 'headPitch', 'headYaw',
+  'armL', 'armR', 'elbowL', 'elbowR', 'legL', 'legR', 'kneeL', 'kneeR', 'bob',
+  'spine', 'roll', 'torso', 'armOutL', 'armOutR', 'legOutL', 'legOutR', 'stretch',
+  'armTwistL', 'armTwistR', 'wristL', 'wristR',
+];
 
 /**
  * A pose with every angle at zero.
@@ -84,6 +153,18 @@ export function zeroPose(): Pose {
     kneeL: 0,
     kneeR: 0,
     bob: 0,
+    spine: 0,
+    roll: 0,
+    torso: 0,
+    armOutL: 0,
+    armOutR: 0,
+    legOutL: 0,
+    legOutR: 0,
+    stretch: 0,
+    armTwistL: 0,
+    armTwistR: 0,
+    wristL: 0,
+    wristR: 0,
   });
 }
 
@@ -104,6 +185,18 @@ export function resetPose(out: Pose): Pose {
   out.kneeL = 0;
   out.kneeR = 0;
   out.bob = 0;
+  out.spine = 0;
+  out.roll = 0;
+  out.torso = 0;
+  out.armOutL = 0;
+  out.armOutR = 0;
+  out.legOutL = 0;
+  out.legOutR = 0;
+  out.stretch = 0;
+  out.armTwistL = 0;
+  out.armTwistR = 0;
+  out.wristL = 0;
+  out.wristR = 0;
   return out;
 }
 
@@ -123,6 +216,18 @@ export function copyPose(from: Pose, to: Pose): Pose {
   to.kneeL = from.kneeL;
   to.kneeR = from.kneeR;
   to.bob = from.bob;
+  to.spine = from.spine;
+  to.roll = from.roll;
+  to.torso = from.torso;
+  to.armOutL = from.armOutL;
+  to.armOutR = from.armOutR;
+  to.legOutL = from.legOutL;
+  to.legOutR = from.legOutR;
+  to.stretch = from.stretch;
+  to.armTwistL = from.armTwistL;
+  to.armTwistR = from.armTwistR;
+  to.wristL = from.wristL;
+  to.wristR = from.wristR;
   return to;
 }
 
@@ -142,6 +247,18 @@ export function blendPose(out: Pose, a: Pose, wa: number, b: Pose, wb: number): 
   out.kneeL = a.kneeL * wa + b.kneeL * wb;
   out.kneeR = a.kneeR * wa + b.kneeR * wb;
   out.bob = a.bob * wa + b.bob * wb;
+  out.spine = a.spine * wa + b.spine * wb;
+  out.roll = a.roll * wa + b.roll * wb;
+  out.torso = a.torso * wa + b.torso * wb;
+  out.armOutL = a.armOutL * wa + b.armOutL * wb;
+  out.armOutR = a.armOutR * wa + b.armOutR * wb;
+  out.legOutL = a.legOutL * wa + b.legOutL * wb;
+  out.legOutR = a.legOutR * wa + b.legOutR * wb;
+  out.stretch = a.stretch * wa + b.stretch * wb;
+  out.armTwistL = a.armTwistL * wa + b.armTwistL * wb;
+  out.armTwistR = a.armTwistR * wa + b.armTwistR * wb;
+  out.wristL = a.wristL * wa + b.wristL * wb;
+  out.wristR = a.wristR * wa + b.wristR * wb;
   return out;
 }
 
@@ -169,6 +286,18 @@ export function addPose(out: Pose, delta: Pose, weight: number): Pose {
   out.kneeL += delta.kneeL * weight;
   out.kneeR += delta.kneeR * weight;
   out.bob += delta.bob * weight;
+  out.spine += delta.spine * weight;
+  out.roll += delta.roll * weight;
+  out.torso += delta.torso * weight;
+  out.armOutL += delta.armOutL * weight;
+  out.armOutR += delta.armOutR * weight;
+  out.legOutL += delta.legOutL * weight;
+  out.legOutR += delta.legOutR * weight;
+  out.stretch += delta.stretch * weight;
+  out.armTwistL += delta.armTwistL * weight;
+  out.armTwistR += delta.armTwistR * weight;
+  out.wristL += delta.wristL * weight;
+  out.wristR += delta.wristR * weight;
   return out;
 }
 
@@ -338,6 +467,8 @@ function easeOut(t: number): number {
 interface StrokeArm {
   shoulder: number;
   elbow: number;
+  /** How far the arm is out to the side; only the 3D rig reads it. */
+  out: number;
 }
 
 /**
@@ -354,21 +485,31 @@ function crawlArm(p: number): StrokeArm {
   if (p < 0.26) {
     // The hand reaches forward under the water and catches.
     const u = p / 0.26;
-    return { shoulder: lerp(A, A - 0.6, u), elbow: lerp(0.12, 0.95, u) };
+    return { shoulder: lerp(A, A - 0.6, u), elbow: lerp(0.12, 0.95, u), out: 0.08 };
   }
   if (p < 0.56) {
     // The pull: the hand travels back along the side of the body.
     const u = (p - 0.26) / 0.3;
-    return { shoulder: lerp(A - 0.6, 0.5, easeIn(u)), elbow: lerp(0.95, 0.55, u) };
+    return { shoulder: lerp(A - 0.6, 0.5, easeIn(u)), elbow: lerp(0.95, 0.55, u), out: 0.08 };
   }
   if (p < 0.78) {
     // The hand leaves the water at the hip and the elbow comes up.
     const u = (p - 0.56) / 0.22;
-    return { shoulder: lerp(0.5, -0.95, easeOut(u)), elbow: lerp(0.55, 0.3, u) };
+    // The arm swings out to the side as it leaves the water, so in 3D it
+    // comes round over the water instead of through the body.
+    return {
+      shoulder: lerp(0.5, -0.95, easeOut(u)),
+      elbow: lerp(0.55, 0.3, u),
+      out: lerp(0.08, 0.55, easeOut(u)),
+    };
   }
   // The recovery over the water: the elbow leads the hand up and round.
   const u = (p - 0.78) / 0.22;
-  return { shoulder: lerp(-0.95, -A, easeOut(u)), elbow: lerp(0.3, 0.12, u) };
+  return {
+    shoulder: lerp(-0.95, -A, easeOut(u)),
+    elbow: lerp(0.3, 0.12, u),
+    out: lerp(0.55, 0.08, easeIn(u)),
+  };
 }
 
 /**
@@ -388,6 +529,8 @@ function crawl(out: Pose, t: number): Pose {
   out.elbowR = right.elbow;
   out.armL = left.shoulder;
   out.elbowL = left.elbow;
+  out.armOutR = right.out;
+  out.armOutL = left.out;
 
   // The body rolls towards the arm that is pulling. In a side view a roll
   // about the long axis of the body can only be drawn as a tilt in the
@@ -395,6 +538,11 @@ function crawl(out: Pose, t: number): Pose {
   // out of the water, so the roll is a small one.
   const pulling = Math.sin(phase * TAU - 0.6);
   out.bodyRoll = pulling * 0.05;
+  // The real roll, shoulder to shoulder, for the 3D rig.
+  out.roll = pulling * 0.6;
+  out.spine = 0;
+  out.legOutL = 0;
+  out.legOutR = 0;
   out.bodyPitch = 0.05;
   out.bodyY = 0;
   // The head stays down, but it lifts a little when the near arm comes
@@ -413,6 +561,8 @@ function crawl(out: Pose, t: number): Pose {
 
   // The body rides on the stroke: it rises as the arm pulls.
   out.bob = 0.02 * Math.max(0, pulling);
+  // Squash and stretch is not part of a stroke.
+  out.stretch = 0;
   return out;
 }
 
@@ -446,9 +596,21 @@ function breaststroke(out: Pose, t: number): Pose {
   }
   out.armR = out.armL;
   out.elbowR = out.elbowL;
+  // The arms sweep out to the sides on the pull and come together again
+  // in front of the face.
+  const sweep = phase >= 0.3 && phase < 0.65 ? Math.sin(((phase - 0.3) / 0.35) * Math.PI) : 0;
+  out.armOutL = 0.1 + 0.85 * sweep;
+  out.armOutR = out.armOutL;
 
   // The knees snap in at the end of the pull.
   const snap = Math.max(0, Math.sin(phase * TAU - 1.9));
+  // The frog kick: the knees open as they come in, and the legs close
+  // again as they push out.
+  out.legOutL = 0.55 * snap;
+  out.legOutR = out.legOutL;
+  out.roll = 0;
+  // The chest rises as the head comes up to breathe.
+  out.spine = -0.18 * Math.max(0, Math.sin(phase * TAU - 2.6));
   out.legL = 0.22 * snap;
   out.legR = 0.22 * snap;
   out.kneeL = -1.5 * snap;
@@ -463,6 +625,8 @@ function breaststroke(out: Pose, t: number): Pose {
   out.bodyY = 0;
   // The body surges up with the pull.
   out.bob = 0.03 * snap;
+  // Squash and stretch is not part of a stroke.
+  out.stretch = 0;
   return out;
 }
 
@@ -496,6 +660,13 @@ function butterfly(out: Pose, t: number): Pose {
   }
   out.armR = out.armL;
   out.elbowR = out.elbowL;
+  // Both arms come round over the water together, out at the sides.
+  const recovering = phase >= 0.62 ? Math.sin(((phase - 0.62) / 0.38) * Math.PI) : 0;
+  out.armOutL = 0.1 + 0.75 * recovering;
+  out.armOutR = out.armOutL;
+  out.legOutL = 0;
+  out.legOutR = 0;
+  out.roll = 0;
 
   // The wave travels from the chest to the feet, so the body rises as the
   // arms pull and settles as they come over.
@@ -510,9 +681,13 @@ function butterfly(out: Pose, t: number): Pose {
   out.headPitch = -0.24 + breathe * 0.6;
   out.headYaw = 0;
   out.bodyPitch = 0.09 * wave;
+  // The spine carries the wave a quarter of a cycle ahead of the legs.
+  out.spine = 0.3 * Math.sin(phase * TAU - 0.9 + Math.PI / 2);
   out.bodyRoll = 0;
   out.bodyY = 0.02 * wave;
   out.bob = 0.026 * Math.max(0, wave);
+  // Squash and stretch is not part of a stroke.
+  out.stretch = 0;
   return out;
 }
 
@@ -543,10 +718,100 @@ function doggy(out: Pose, t: number): Pose {
   // The chin is up, and the head looks forward along the water.
   out.headPitch = 0.34;
   out.headYaw = Math.sin(phase * TAU * 0.5) * 0.1;
+  out.armOutL = 0.12;
+  out.armOutR = 0.12;
+  out.legOutL = 0.12;
+  out.legOutR = 0.12;
+  out.spine = 0;
+  out.roll = 0;
   out.bodyPitch = -0.22;
   out.bodyRoll = 0;
   out.bodyY = 0;
   out.bob = 0.014 * Math.sin(phase * TAU * 2);
+  // Squash and stretch is not part of a stroke.
+  out.stretch = 0;
+  return out;
+}
+
+/**
+ * Backstroke: the swimmer lies on its back and the arms go over the head,
+ * one after the other, each in a full turn.
+ *
+ * The arm angle wraps once a cycle, the way a wheel does: a full turn looks
+ * the same as none. The shoulders rock with the stroke, and the legs flutter
+ * at three times the rate of the arms.
+ */
+function backstroke(out: Pose, t: number): Pose {
+  out.rootRot = Math.PI / 2;
+  const phase = ((t % 1) + 1) % 1;
+  const other = (phase + 0.5) % 1;
+
+  // Half a turn about the long axis: the swimmer lies face up.
+  out.roll = Math.PI + 0.45 * Math.sin(phase * TAU);
+  // The arms are straight and go round over the head.
+  out.armL = -phase * TAU;
+  out.armR = -other * TAU;
+  // The elbows stay just above the water, and bend in the half of the
+  // circle that is under the body, where the hand pulls.
+  out.elbowL = 0.1 + 0.6 * Math.max(0, Math.sin(phase * TAU));
+  out.elbowR = 0.1 + 0.6 * Math.max(0, Math.sin(other * TAU));
+
+  // The flutter kick, at three times the rate of the arms.
+  const kick = Math.sin(phase * TAU * 3);
+  out.legL = 0.22 * kick;
+  out.legR = -0.22 * kick;
+  out.kneeL = -0.15;
+  out.kneeR = -0.15;
+
+  // The head rests on the water and looks up at the sky.
+  out.headPitch = 0.15;
+  out.headYaw = 0;
+  out.bob = 0.01 * Math.sin(phase * TAU * 2);
+  out.bodyPitch = 0;
+  out.bodyRoll = 0;
+  out.bodyY = 0;
+  out.spine = 0;
+  out.armOutL = 0;
+  out.armOutR = 0;
+  out.legOutL = 0;
+  out.legOutR = 0;
+  out.stretch = 0;
+  return out;
+}
+
+/**
+ * Floating on the back, a star with the arms out: almost still, with a slow
+ * scull of the hands. It is what a swimmer does while it waits for a plan to
+ * come together.
+ */
+function floating(out: Pose, t: number): Pose {
+  out.rootRot = Math.PI / 2;
+  const phase = ((t % 1) + 1) % 1;
+
+  out.roll = Math.PI;
+  // The arms are out to the sides and the hands scull slowly.
+  out.armL = 0.1;
+  out.armR = 0.1;
+  out.armOutL = 1.35;
+  out.armOutR = 1.35;
+  const scull = 0.2 + 0.1 * Math.sin(phase * TAU);
+  out.elbowL = scull;
+  out.elbowR = scull;
+  // The legs are out to the sides, and the body barely moves.
+  out.legOutL = 0.35;
+  out.legOutR = 0.35;
+  out.legL = 0;
+  out.legR = 0;
+  out.kneeL = 0;
+  out.kneeR = 0;
+  out.spine = -0.05;
+  out.bob = 0.015 * Math.sin(phase * TAU);
+  out.headPitch = 0;
+  out.headYaw = 0;
+  out.bodyPitch = 0;
+  out.bodyRoll = 0;
+  out.bodyY = 0;
+  out.stretch = 0;
   return out;
 }
 
@@ -555,6 +820,8 @@ export const SWIM_STYLES: Record<SwimStyle, SwimStyleInfo> = {
   breaststroke: { cadence: 0.38, fn: (out, t) => breaststroke(out, t) },
   butterfly: { cadence: 0.42, fn: (out, t) => butterfly(out, t) },
   doggy: { cadence: 0.75, fn: (out, t) => doggy(out, t) },
+  backstroke: { cadence: 0.5, fn: (out, t) => backstroke(out, t) },
+  float: { cadence: 0.2, fn: (out, t) => floating(out, t) },
 };
 
 /* ------------------------------------------------------------------ */

@@ -97,3 +97,16 @@ def test_an_unknown_agent_has_its_own_exit_code(capsys, monkeypatch):
     monkeypatch.setattr(cli, "fetch", boom)
     assert cli.main(["--agent", "session:nope"]) == cli.EXIT_UNKNOWN_AGENT
     assert "no agent called" in capsys.readouterr().err
+
+
+def test_the_table_shows_the_name_and_not_the_placeholder_label():
+    agent = _agent("session:a", label="main")
+    agent["name"] = "pool-scene-3d-sprint"
+    text = cli.render(_state(agents=[agent]))
+    assert "pool-scene-3d-sprint" in text
+    assert "main" not in text
+
+
+def test_an_older_backend_without_a_name_still_shows_the_label():
+    text = cli.render(_state(agents=[_agent("session:a", label="pool-sprint")]))
+    assert "pool-sprint" in text

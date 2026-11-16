@@ -185,7 +185,7 @@ def create_ingest_router(
     return router
 
 
-async def _announce(state, settings) -> None:
+async def _announce(state, settings, name: str) -> None:
     """Tell the user that an agent that took a long time is done.
 
     The pool is a window on a desk. When it is not the thing you are
@@ -201,9 +201,7 @@ async def _announce(state, settings) -> None:
     finished = getattr(state, "finished_at", None) or time.time()
     seconds = finished - started
     try:
-        await asyncio.to_thread(
-            notify.notify_finished, state.label or state.id, seconds
-        )
+        await asyncio.to_thread(notify.notify_finished, name or state.id, seconds)
     except Exception:  # pragma: no cover - a notification never breaks a hook
         log.debug("the notification failed", exc_info=True)
 
@@ -222,7 +220,7 @@ async def _dispatch(registry, broker, scene, item: AgentEvent, changed, settings
             # The notification is a courtesy: it must not break the event
             # that tells the browser the agent is done.
             try:
-                await _announce(state, settings)
+                await _announce(state, settings, registry.payload(state)["name"])
             except Exception:  # pragma: no cover - the pool does not break
                 log.debug("the announcement failed", exc_info=True)
     elif item.type == "removed":
@@ -242,7 +240,7 @@ async def _dispatch(registry, broker, scene, item: AgentEvent, changed, settings
 
     upserts: List[Dict] = []
     for state in changed:
-        payload = state.to_dict()
+        payload = registry.payload(state)
         payload["scene"] = scene.scene_id
         payload["presentation"] = scene.presentation(state)
         upserts.append(payload)

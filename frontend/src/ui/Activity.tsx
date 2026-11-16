@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { displayNames } from '../scene/names';
+import { useStore } from '../state/useStore';
 import {
   eventAgentName,
   eventWhat,
@@ -29,6 +31,8 @@ const MAX_EVENTS = 40;
  * backend about its past when nobody is looking at the answer.
  */
 export function Activity() {
+  const { agents } = useStore();
+  const names = useMemo(() => displayNames([...agents.values()]), [agents]);
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState<HistoryRecord[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -101,9 +105,9 @@ export function Activity() {
                   className="activity__event"
                 >
                   <span className="activity__time">{formatEventTime(event.ts)}</span>
-                  <span className="activity__agent">{eventAgentName(event)}</span>
+                  <span className="activity__agent">{eventAgentName(event, names)}</span>
                   <span className="activity__what">{eventWhat(event)}</span>
-                  {event.detail && event.detail !== eventAgentName(event) ? (
+                  {event.detail && event.detail !== eventAgentName(event, names) ? (
                     <span className="activity__detail">{shortDetail(event.detail)}</span>
                   ) : null}
                 </li>

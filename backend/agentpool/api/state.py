@@ -28,7 +28,7 @@ def create_state_router(
             raise HTTPException(status_code=401, detail="the token is missing or wrong")
 
     def agent_view(state) -> Dict[str, Any]:
-        payload = state.to_dict()
+        payload = registry.payload(state)
         payload["scene"] = scene.scene_id
         payload["presentation"] = scene.presentation(state)
         return payload

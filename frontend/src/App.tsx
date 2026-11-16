@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { connectAgentSocket } from './net/ws';
 import type { ConnectionState } from './net/types';
-import { PoolCanvas } from './scene/pool/PoolCanvas';
+import { demoCount, startDemo } from './scene/demo/demoFeed';
+import { SceneHost } from './scene/SceneHost';
 import { searchWithAgent, store } from './state/store';
 import { useStore } from './state/useStore';
 import { AgentList } from './ui/AgentList';
@@ -17,8 +18,10 @@ export function App() {
   const wasConnection = useRef<ConnectionState | null>(null);
 
   useEffect(() => {
-    const socket = connectAgentSocket();
-    return () => socket.close();
+    // The demo crowd replaces the websocket: it is a script, not a backend.
+    const demo = demoCount(window.location.search);
+    const handle = demo > 0 ? startDemo(demo) : connectAgentSocket();
+    return () => handle.close();
   }, []);
 
   // Say it when the dashboard loses the backend, and when it gets it back.
@@ -67,7 +70,7 @@ export function App() {
           role="img"
           aria-label="The pool: a drawing of the agents at work. The agent list has the same information in text."
         >
-          <PoolCanvas />
+          <SceneHost />
         </div>
         <div className="stage__overlay">
           <Summary />

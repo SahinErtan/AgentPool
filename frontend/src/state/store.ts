@@ -12,6 +12,7 @@ import type {
   ConnectionState,
   SessionEventView,
 } from '../net/types';
+import { fullName } from '../scene/names';
 
 export type { ConnectionState };
 
@@ -23,7 +24,8 @@ export interface Toast {
 
 /** Which agents the list shows. */
 export type StatusFilter = 'all' | 'working' | 'idle' | 'done';
-export type KindFilter = 'all' | 'session' | 'subagent' | 'mcp' | 'workflow';
+/** The kinds the list can show. An MCP server is not an agent any more (Sprint 28). */
+export type KindFilter = 'all' | 'session' | 'subagent' | 'workflow';
 
 export interface Filter {
   status: StatusFilter;
@@ -35,8 +37,8 @@ export interface AgentMemory {
   status: AgentStatus;
   finishedAt: number | null;
   lastEventAt: number;
-  /** The name of the agent, so that it can still be named when it is gone. */
-  label: string;
+  /** The full name of the agent, so that it can still be named when it is gone. */
+  name: string;
   kind: AgentKind;
 }
 
@@ -285,7 +287,7 @@ function remember(
       status: agent.status,
       finishedAt: agent.finished_at,
       lastEventAt: agent.last_event_at,
-      label: agent.label,
+      name: fullName(agent),
       kind: agent.kind,
     });
   }

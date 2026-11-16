@@ -1,7 +1,6 @@
 const KIND_MARKS: { mark: string; label: string }[] = [
   { mark: '◆', label: 'Session' },
   { mark: '●', label: 'Subagent' },
-  { mark: '■', label: 'MCP server' },
   { mark: '▲', label: 'Workflow' },
 ];
 
@@ -10,6 +9,26 @@ const SCENE_LEGEND: { mark: string; label: string }[] = [
   { mark: '🛟', label: 'On a lounger — the agent is idle' },
   { mark: '🧍', label: 'Waiting at the edge — the pool is full' },
   { mark: '🚪', label: 'At the gate — on the way in or out' },
+];
+
+/** The keys of the 3D pool, and what a click does there (Sprint 27). */
+const KEYS: { mark: string; label: string; hint: string }[] = [
+  { mark: 'T', label: 'Tour', hint: 'the camera goes round the pool and looks at what happens; any touch stops it' },
+  { mark: 'F', label: 'Follow', hint: 'the selected agent, from close; F or Escape lets go, and so does a drag' },
+  { mark: '👆', label: 'Click again', hint: 'a selected agent turns its head to you and waves' },
+  { mark: '🐱', label: 'Click the cat', hint: 'it runs off and says mrrp' },
+  { mark: '💧', label: 'Click the water', hint: 'a ring and a splash, and the swimmers near it look up' },
+];
+
+/** What the strokes and the poses of the 3D pool say about the work. */
+const WORK_LEGEND: { mark: string; label: string; hint: string }[] = [
+  { mark: '⚡', label: 'Sprint', hint: 'running a command' },
+  { mark: '✎', label: 'Butterfly', hint: 'editing a file' },
+  { mark: '🤿', label: 'Snorkel and dive', hint: 'reading or searching; now and then it dives to the floor' },
+  { mark: '☁', label: 'Backstroke', hint: 'on the web' },
+  { mark: '🌊', label: 'Treading water', hint: 'waiting for a sub-agent' },
+  { mark: '◌', label: 'Floating', hint: 'planning' },
+  { mark: '✋', label: 'Hand up', hint: 'the session needs you' },
 ];
 
 const SWIM_STYLES: { label: string; hint: string }[] = [
@@ -71,6 +90,32 @@ export function Legend() {
               <li key={item.label}>
                 <span className="legend__mark">{item.mark}</span>
                 {item.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="legend__group">
+          <h3>What the work shows</h3>
+          <ul>
+            {WORK_LEGEND.map((item) => (
+              <li key={item.label}>
+                <span className="legend__mark">{item.mark}</span>
+                <strong>{item.label}</strong>
+                <span className="legend__hint"> — {item.hint}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="legend__group">
+          <h3>Keys and clicks</h3>
+          <ul>
+            {KEYS.map((item) => (
+              <li key={item.label}>
+                <span className="legend__mark">{item.mark}</span>
+                <strong>{item.label}</strong>
+                <span className="legend__hint"> — {item.hint}</span>
               </li>
             ))}
           </ul>

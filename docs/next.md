@@ -618,6 +618,469 @@ found, and what was done:
   label that would cover a more important one is left out.
 - **The parasol stood on a lounger.** It stands past the last one.
 
+## Sprint 20 — the pool in three dimensions
+
+The side view put every character on one line: the deck was a strip the
+characters walked up and down, and the swimmers went to and fro on one
+band of water. Most of the pool and of the deck was never used. The pool
+is a 3D scene now, with a camera that goes round it.
+
+Decided with the user: real 3D with Three.js, and the camera may orbit,
+but only between about 15° above the horizon and nearly overhead; the
+characters are low-poly figures with toon shading and an ink line, built
+in code, so a character is still a pure function of its agent id; the 2D
+pool stays as a fallback, frozen, until the 3D one has settled.
+
+Frontend only. The backend sends no coordinates, so it did not change, and
+neither did the scene contract. The `lanes` number in `describe()`, which
+the 2D pool ignored, is read now.
+
+### 51. The pool was a side view
+
+- **The scene.** `scene/pool3d/` is the new pool: the world in metres, the
+  flow of each agent, the water, the light, the environment, the labels.
+  `SceneHost` picks the pool: 3D by default, `?2d` for the old one, which
+  also opens when the browser has no WebGL2 or loses its GPU context for
+  good. Each pool is loaded only when it is shown: the 2D page does not
+  download Three.js and the 3D page does not download PixiJS.
+- **One motion core for both.** The half of the animator that computes the
+  pose (`motion/driver.ts`) is pure now; the 2D rig and the 3D rig each
+  write its pose in their own way. The 2D pool did not move by a pixel.
+- **The pose grew the parts a side view cannot show:** a spine, the roll
+  of the body about its long axis, and the arms and legs out to the side.
+  The crawl rolls shoulder to shoulder and brings the arm round over the
+  water, the breaststroke sweeps out and kicks like a frog, the butterfly
+  has its wave down the spine. The 2D rig ignores the new fields.
+- **The character.** One skinned mesh per agent, rigidly bound: each part
+  is a capsule or a sphere on one bone. One draw call per character, one
+  more for the ink line, one material for all of them. Measured: 60
+  characters at 60 fps, 245 draw calls with the shadow pass.
+- **The water.** A shader with waves that never line up, Fresnel, the sun
+  on the water, and rings: a stroke, the wake behind a swimmer and a drop
+  of rain each start one. The floor and the walls have the light of the
+  waves on them; everything below the surface is tinted with the water.
+  The masks and the second, underwater rig of the 2D pool are gone.
+- **Walking round the pool.** A path goes round the water, through its
+  corners, never over it. People keep out of each other's way: they slow
+  down behind somebody, step aside to pass, and in a crowd the one with
+  the smaller id goes first, so a crowd always moves. The stride follows
+  the ground covered, as in #45.
+- **Four ladders.** One ladder was a queue that never moved. A swimmer
+  takes the nearest one that is not busy, and one person is on a ladder
+  at a time. A swimmer turns at the wall instead of vanishing there.
+- **The gate.** The queue at the gate is outside the fence, along it, in
+  lines a person can walk between; newcomers come up the garden path.
+- **The deck, the loungers, the reflections (left from Sprint 19).** The
+  deck has perspective of its own. The loungers face the pool, in a second
+  row when there are more than eight, each with a towel, a back rest at
+  the angle the figure leans at and flip-flops at the foot. A fence, a
+  hedge, trees, the hut by the gate, a lifeguard's chair, a ring buoy,
+  parasols that lean in the breeze, a toy and a ball drifting on the
+  water. The water mirrors the sky.
+- **The labels** are HTML over the canvas, sharp at every zoom; the ones
+  that would cover a more important one are left out, as in the 2D pool.
+- **The lab** has a 3D page, `?lab&3d`, with the same rows and scrubbers.
+
+### 52. What the crowd test found
+
+A pool with sixty agents, pushed in at once in the browser, found what the
+first tests did not:
+
+- **Seventeen swimmers stood round the one ladder for ever,** each waiting
+  for the one next to it. Four ladders, and a ladder is reached from a
+  step away and only when it is free.
+- **The queue at the gate stood on the path** everybody walked, and the
+  newcomers piled up against it. The queue is outside the fence now.
+- **A crowd pushed itself to a standstill**, everybody pushing everybody
+  and nobody giving way. Only the one who gives way is pushed, and the
+  order of the ids says who that is.
+- **A corner on the way had to be stood on**, and a crowd that all had to
+  stand on the point outside the gate could never get past it. A corner
+  is passed within a step of it.
+
+Each has a test in `world3d.test.ts`; the last of them drives sixty agents
+through the gate at once and asks that every one of them gets where it is
+going.
+
+### 53. What the observer found in the 3D pool (first round)
+
+An observer agent watched the live 3D pool at three sizes, with the real
+agents and with sixty pushed in. Fixed:
+
+- **Swimmers in one lane swam through each other.** They keep to the right
+  of the lane now, so two that meet pass; one that catches up drops in
+  behind instead of swimming through, and the middle of a body stays a
+  shoulder's width inside the ropes.
+- **A swimmer turned with its feet in the wall.** The turn started half a
+  body from the wall and the glide through it carried the swimmer on. It
+  starts early enough for the legs, which point at the wall after it.
+- **Every reload replayed every entrance**: an agent that had swum for
+  fifteen hours walked in through the gate again. The agents that are
+  there when the page opens start in their places; only the ones that
+  come later walk in.
+- **The whole crowd chose the ladder by the gate.** A body walking to a
+  ladder did not count as using it yet. It does now; all four are used.
+- **The trees' shadows ended in straight-cut wedges**, outside the shadow
+  camera. The trees cast none.
+- **On a phone the loungers at the ends were cut off**, and the default
+  view left the gate out. Both are framed now.
+- A console warning: the soft shadow map is gone from Three.js r186.
+
+Left as it is: the agents that have left stand at the gate until the
+backend takes them away, which the backend does once it is told.
+
+## Sprint 21 — the tools and the polish
+
+The plan is `docs/plans/sprint-21-polish-and-tools.md`. It builds the tools
+the later sprints stand on, and smooths what the first 3D round left rough:
+
+- **A demo crowd.** `?demo=N` fills the pool with N fake agents whose
+  places follow the backend's own rules, so every behaviour can be watched
+  without real agents.
+- **Debug hooks.** `?debug` puts `list`, `play`, `hold`, `force` and `look`
+  on `window.__agentpool.debug`.
+- **The figures.** A smaller head, five hair styles and a mouth. A figure
+  on a lounger lies back against the back rest.
+- **Short actions.** The cheer, the clap, the raised hand, treading water
+  and the hop play over the running motion, with squash and stretch.
+- **The effects.** Foam behind a swimmer, bubbles, confetti and a bigger
+  particle pool. No shadow acne. The water is clearer at the shallow end
+  and darker at the deep end.
+
+## Sprint 22 — the work shows (done)
+
+The pool could not say what an agent was doing: an agent running Bash and
+an agent reading a file swam the same stroke, and a session that asked for
+permission looked like any other. Now the tool an agent uses decides how it
+swims, and a session that waits for the person swims to the wall and holds
+up its hand until the person answers.
+
+Frontend only, and the 2D pool is untouched.
+
+- **The strokes.** Bash is a sprint (crawl at 1.3 tempo), an edit is a
+  butterfly, reading is a breaststroke with a dive to the floor now and
+  then, the web is a backstroke, planning is a float, and delegating is
+  treading water. The work is smoothed, so a stroke does not change with
+  every tool: a new kind has to hold for 2.5 s, and the shown one for 6 s.
+- **Waiting for the person.** A permission or a question of the session,
+  newer than the agent's last event and under 15 minutes old, makes the
+  swimmer swim to the wall, turn and hold there. A waiting figure on a
+  lounger, or standing, raises its hand. Its label turns amber and pulses,
+  and says "needs you" every 8 s.
+- **Sub-agents.** A sub-agent keeps its own suit, with its parent's suit as
+  the trim. When one is born, its parent looks up or waves and says its
+  name. Hovering or selecting an agent shows small rings under its parent
+  and its children.
+- **Tiredness.** An agent that has been working for more than half an hour
+  has a swimmer that slows down, by a quarter at an hour and a half of work.
+- **Two new strokes**, backstroke and float, are only put on by the work;
+  the birth table is unchanged, so no existing agent looks different.
+- **The driver** takes a swim style and a tempo from outside, cross-fades
+  between styles over 0.6 s, and has a treading state that replaces the
+  posture.
+
+Measured with `?demo=60&debug` after 20 s: 60 fps, 809k triangles (the
+budget is 1.2 M). Draw calls read 254 against a budget of 180; the new rings
+are hidden unless somebody hovers, so the excess is most likely from the
+figures themselves, but a build from before this sprint has not been
+measured to prove it. The console is clean on `?demo=24` and `?demo=60`.
+
+Found on the way: the existing "no stroke jumps" test read a full turn of
+the backstroke arm as a jump of 6.3 radians. The arm angle is the same after
+a full turn, so the test now measures the step the short way round.
+
+## Sprint 23 — new pool equipment (done in part)
+
+The pool had nothing to go to but the water and the loungers. Now the deck
+has a terrace with a water slide, a diving board, a hot tub, a kiosk, a
+ping-pong table and a shower, the shallow end has two fountains and a
+flamingo, and a line of flags runs over the water. The paths go round all of
+it. Nobody uses the places yet: Sprints 24 and 25 do that.
+
+Frontend only, and the 2D pool is untouched.
+
+- **The terrace, as data.** `world.ts` builds the equipment and the
+  obstacles from the pool and the deck, so it still fits with one to eight
+  lanes. The deck reaches 9.5 m past the far end of the pool.
+- **Paths round everything.** `planPath` is a visibility graph over every
+  obstacle, searched with Dijkstra. A walker never steps into equipment: a
+  step that would is pushed back to the edge of its margin, so a walker
+  slides along it.
+- **The drawing.** The static parts are one merged mesh. The moving parts
+  are the chute's water (stripes running down it), the plank, the hot tub's
+  water (bubbles rising in it), the flags and the flamingo. The fountains
+  throw 20 drops a second for 40 s out of every 120.
+- **The toy** moved to the middle third of the pool, to make room for the
+  flamingo at the shallow end.
+- **The default view** now takes in the terrace (the plan's fallback
+  framing); the slide was cut off before.
+
+Measured with `?demo=60&debug` after 20 s: 60 fps, 831k triangles (the
+budget is 1.2 M), 266 draw calls. That is 12 more than at the end of Sprint
+22 (254), which is what this sprint should add. The budget of 180 is still
+not met; that was already so after Sprint 22. `?demo=12` at 390 x 844 runs
+at 60 fps with 113 calls. The console is clean on `?demo=60` and `?demo=12`,
+and on `?2d`.
+
+Found on the way:
+
+- A two-lane pool leaves a sealed pocket between the board, the low chute
+  and the hot tub. Their 0.5 m margins leave less than 1 m between them, and
+  nothing passes. A walker that gets there has no way out. No agent goes
+  there yet, but Sprint 24 has to route the diver and the slide users with
+  this in mind.
+- The planner's "end inside a margin" exception has to test the raw
+  obstacle, not a margin of 5 cm: a point closer than 5 cm to the water
+  could otherwise never leave it.
+- The plan's down vector for the chute's trough points up on a level
+  stretch; it is written the other way round.
+
+## Sprint 24 — ways into the water (done in part)
+
+Every swimmer used to climb down the same ladder. Now a swimmer chooses
+its way in: the ladder (40 in 100), the starting block of its lane (22),
+the board (14), the slide (14), or a cannonball off the wall of the two
+outside lanes (10). A way that is busy, or that cannot be reached from the
+deck, is not offered. Frontend only, and the 2D pool is untouched.
+
+- **The entries.** `entries.ts` makes the choice from a seeded generator, and
+  gives the approach of each way. The steps are in `flow.ts`: the racing
+  dive, the board's walk and bounces with the board bending, the slide's
+  stairs, sit, ride and drop, the cannonball's jump and splash. A way given
+  up on the ground walks the body back down.
+- **The swimming.** A flip turn for a run, and for every other turn of an
+  edit. A rest at a wall after three to six lengths, for four to seven
+  seconds. A race when two swimmers come level in neighbouring lanes.
+- **The edge.** The waiting agents sit on the coping with their feet in the
+  water and kick. At a long wall, with no ladder within 3 m, three in ten
+  swimmers get out over the edge.
+- **The sealed pocket.** The two-lane pocket that Sprint 23 left is closed
+  off: `chooseEntry` only offers ways whose approach can be walked to. A test
+  checks every lane count from one to six.
+
+Measured with `?demo=60&debug` after 20 s: 60 fps, 263 draw calls against a
+budget of 270, 831k triangles. The console is clean. The entries, the races,
+the rests and the flips are covered by `entries.test.ts` and by two crowd
+tests in `world3d.test.ts` (the 24 and the 60 agents, all going in by the
+choice). 343 tests pass.
+
+Not done in this round: the screenshots of each way, and the five-minute
+watch. A forced board dive did not reach the board within the 30 s watched,
+so the bend of the board and the new poses have not been seen on screen.
+The deviations are in the sprint file.
+
+## Sprint 25 — deck life (done in part)
+
+An idle agent used to sit on its lounger for ever. Now it gets up from time
+to time and goes on an errand: a shower, the kiosk, the hot tub, a game of
+ping-pong or ball, a little talk in a group, a stroll round the pool, or a
+towel shaken out where it lies. It can also lie on its side or sit up for a
+while, and the queue fidgets. Frontend only, and the 2D pool is untouched.
+
+- **The planner.** `errands.ts` is pure: a seeded draw over the kinds that are
+  open now, with the partners of the group kinds taken from the idle agents.
+  The shower gets a bonus for a swimmer that has just left the water. No more
+  than 40 per cent of the idle agents are out at once.
+- **The lifecycle.** `flow.ts` walks the agent to its place, uses it, and
+  brings it back. The moment an agent wants the water, or its session needs
+  the person, the errand is dropped; a body in the hot tub climbs out by the
+  step first, and a partner is freed with it.
+- **The use.** Seventeen new actions and five props, all held by the same
+  pose driver as before. The balls are drawn once and move with the games.
+- **The walkers.** Two fixes came out of the crowd test. A walker pressed
+  against a face now slides along it, and a corner is only passed when the
+  walk onward is clear of the margins. Before, a body could stand against the
+  tower of the slide for minutes.
+
+Measured with `?demo=24&debug` after a run of the clock: 60 fps, 159 draw
+calls against a budget of 162, 382k triangles. With `?demo=60&debug`: 60 fps,
+269 draw calls against 270, 832k triangles. The console is clean at warning
+level in both. 360 frontend tests pass (17 new: the planner, the ball paths,
+and the errands in the flow, including the 300-second crowd and the drop of
+an errand when an agent wants the water).
+
+Not done in this round: most of the screenshots, the ten-minute watch, and a
+look at chat and the sunscreen on screen. The sunscreen is not drawn at night,
+and chat needs two seated neighbours. The deviations are in the sprint file.
+Two places have no errand on small pools: the kiosk, the hot tub and the court
+are sealed off on one and two lanes.
+
+## Sprint 26 — world and creatures (done in part)
+
+The pool lives when no agent moves. A cat wanders, naps and watches the
+water; a duck visits the quiet end now and then; two birds cross the sky, and
+two butterflies work the flower beds. Clouds drift over the deck and throw
+their shadows on it, and the lamps, the water and the string lights come on
+after dark. The rain changes what people do: the loungers cover their heads
+with a towel and the walkers hurry. Frontend only, and the 2D pool is untouched.
+
+- **The limit.** `creatures.ts` is pure, and the animals are at most four on
+  the screen at once, all kinds together (`MAX_CREATURES`). A test runs a
+  simulated day and checks the count at every step.
+- **The drawing.** `creatures3d.ts` makes each animal from a few merged
+  pieces. The legs, the birds and the butterflies are instanced, and a kind
+  that is not there costs no draw call. Only the cat's body casts a shadow.
+- **The world.** A hut and its porch, six garden trees, a sprinkler, three
+  flower beds and six lantern posts are fixed places in `world.ts`. The
+  placement tests check them against the paths, the standing spots and the
+  equipment.
+- **The sky and the night.** Ten cloud puffs in one instanced mesh, cloud
+  shadows on the deck, the lawn and the pieces, stars in the dome, and a moon.
+  At night six lamps glow under the water, the lanterns and two strings of
+  bulbs light up, the water glows, and two point lights come on. The hot tub
+  steams.
+- **The rain and the calm.** In the rain the loungers take a towel and the
+  walkers hurry and lean; outdoor errands end. The deck wets and dries
+  slowly, and the parasols sway more. After two minutes with nobody working,
+  the water settles and the fountains stop.
+
+Measured with `?demo=24&debug`: 60 fps, 165 draw calls clear, 177 in the rain,
+against a budget of 182. With `?demo=60&debug`: 60 fps, 274 draw calls by day,
+276 at night, 288 in the rain, against 290, and 843k triangles. The console is
+clean at warning level in both. 376 frontend tests pass (16 new: the creature
+rules over a simulated day, and the placement of the lanterns, the beds and
+the sprinkler). `make test-backend` passes.
+
+Not done in this round: five of the screenshots (the clouds, the duck, the
+birds, the butterflies, the sprinkler), a watch through a full day, and tests
+for the cover, the lean and the calm. The duck does not come to the 24-agent
+demo, because the swimmers leave no room in the shallow end; it comes to a
+quieter pool. The deviations are in the sprint file.
+
+## Sprint 27 — moments and camera (done in part)
+
+The pool reacts to what happens in it. An agent that finishes is clapped for
+and cheers when it is out of the water; a round number of events brings
+confetti and a shout; a session that ends is cheered at the gate, by fireworks
+at night. A camera that follows one agent from close, and a tour that orbits
+the deck and turns to look at what happens. And a click means something: the
+selected agent waves back, the cat runs off, the water ripples.
+
+- **The moments.** `moments.ts` is pure. It compares two snapshots and says
+  what happened: finished, a milestone (only the highest one crossed), a
+  session that ended, the pool gone quiet after two minutes, busy at six
+  working, and awake again. The first snapshot fills the memory and says
+  nothing, so a reload throws no confetti. 13 tests.
+- **The reactions.** Clapping by the three nearest people in reach, a slap of
+  the water by the swimmers near the finisher, the cheer and the hop. The
+  fountains run for forty seconds when the pool is busy. A cat asleep near a
+  working agent wakes up. Reduced motion keeps the claps and the labels, and
+  takes away the confetti, the fireworks and the hop.
+- **The particles.** Sparks (kind 6) and rockets (kind 7) live in the same
+  points mesh, so the fireworks cost no draw call. A firework is 113
+  particles. The pool holds 2400 now, up from 1600, because the sparks of a
+  rocket would overwrite the foam of a busy pool.
+- **The camera.** `F` follows the selected agent from 7 m, and a double-click
+  on an agent does the same. `T` starts the tour, and so does a button in the
+  bottom left corner. The tour orbits at 0.035 rad a second and looks at the
+  things that weigh most: a needs-you hand (3), a finish or a milestone (2),
+  a dive, a slide or a cannonball (1.5), a race or a duck (1). It starts by
+  itself after two minutes with no input, and never with reduced motion. Any
+  press, the wheel or another key stops it. `director.ts` is pure, 10 tests.
+- **The clicks.** Clicking the selected agent again turns its head to the
+  camera for 2.5 s and waves. Clicking the water ripples it. Clicking the cat
+  makes it run and say `mrrp`. Clicking the flamingo or the beach ball makes
+  it bob and turn. Only an agent's click changes the selection.
+
+Measured with `?demo=24&debug`: 60 fps, 166 draw calls, against a budget of
+182, and the console is clean. With `?demo=60&debug`: 60 fps, 274 draw calls,
+against 290, and 842k triangles, with the console clean. Reduced motion
+disables the tour button and starts no tour.
+
+Not done in this round: the observer round, the screenshots of the finish,
+the milestone, the fireworks and the follow, and a look at the click
+reactions on screen. The brief for the observer is in
+`docs/plans/sprint-27-observer-brief.md`; the main session runs it. The
+deviations are in the sprint file.
+
+## Sprint 28 — who is who
+
+The user asked to be able to tell from a character's name which session it
+belongs to and what it is doing. Measured against the running backend with
+two live sessions, the names said almost nothing: every session was called
+`main`, every subagent was called by its type (`general-purpose`), and an MCP
+server stood in the pool as a person. The plan is
+`docs/plans/sprint-28-who-is-who.md`; it is the one sprint allowed to change
+the backend.
+
+- **Four bugs in the backend, found by looking at real data.** Every hook
+  event wrote the placeholder `main` over the session's name from the disk.
+  The hook's `cwd` was read and dropped, so no agent had a project. The
+  folder a hook reports moves with every `cd`, so once it was kept the
+  project of this very session read `pool3d`; the project is now the folder
+  the session started in. And a background subagent was drawn twice: once
+  from `SubagentStart` as `sub:`, and once from the `background_tasks` of the
+  Stop hook as `wf:`, under the same id.
+- **The naming rule.** A session is its name on the disk, else its project; a
+  subagent is the description its parent gave it, else its type. The
+  placeholders never win. Two names on the screen are never the same: the
+  rule adds the project or the parent session, and numbers what is still
+  equal, oldest first. `names.ts` is pure; one test builds 60 agents with
+  deliberate clashes and checks every name is different.
+- **What the agent is doing.** `summarize_tool` turns a tool call into a few
+  words (`Bash: npm test`, `Edit: overlay.ts`, `playwright: browser_click`).
+  A hook fired inside a subagent carries its `agent_id`, measured on 333
+  events of one day, so the call goes to the subagent and not to its session.
+  Messages the harness puts in through `UserPromptSubmit` (`<agent-message>`
+  and the like) are not taken as the person's last prompt.
+- **MCP servers are not characters.** Their calls are the activity of the
+  session that made them; old `mcp:` records in the journal are dropped at
+  replay.
+- **On the screen, the name only.** A label of up to 24 characters with a
+  dot in the colour of its family. The pointer over a character brings up one
+  reused card: the full name, the kind and the project, whose session it is,
+  what it is doing now, for how long, and a session's last prompt.
+- **A session that has left still names its subagents.** A session leaves
+  the pool when its turn ends, while its background subagents work on. The
+  backend remembers every session's name and sends it with each agent as
+  `session_name`, so the card says `of: mediaorganizer-77` and the list puts
+  the subagents under that name.
+- **The list** is grouped by session, and the inspector has the project, the
+  description, the activity and the last prompt.
+
+Checked with the real backend: every session carries the name it has in
+`~/.claude/sessions/`, no `mcp:` agent is left, and the cards of the
+MediaOrganizer subagents say whose they are and what they are searching.
+With `?demo=60&debug`: 60 fps, 275 draw calls against 290, 842k triangles,
+60 labels and 60 different names, the console clean. 439 frontend tests and
+176 backend tests pass.
+
+## Sprint 29 — life on the lounger
+
+The user asked what had become of the lounger activities they had planned,
+tea among them. They were designed for the 2D side view in Sprints 6 and 11
+and carried into 3D unchanged, and looking at each of them in 3D showed why
+they did not read: the arms only swung forward and back, so a hand never
+came in front of the face; the props hung from one hand at a fixed offset,
+so the book was held out like a sign and the newspaper floated behind the
+head; and every figure had one habit for life. The plan is
+`docs/plans/sprint-29-life-on-the-lounger.md`; the 2D pool is untouched.
+
+- **Joints that reach the middle.** A twist of the upper arm and a bend of
+  the wrist, both 3D only. Every prop has a grip, and two-handed props are
+  held by both hands on every body shape (within 1 cm).
+- **The activities redone for 3D** (`motion/leisure.ts`), each with a reach,
+  a loop driven by noise and a put-away, and seven new ones: a laptop,
+  music on headphones, a hand fan, lemonade through a straw, a crossword,
+  watching a swimmer, and stroking the cat.
+- **A repertoire chosen for the moment** (`leisurePlan.ts`): the favourite
+  and two more; crosswords and tea in the morning, a fan and lemonade at
+  midday, the laptop in the evening, sleep at night and after a long idle;
+  stretch and a drink right after a swim. No sunbathing in the rain or at
+  night, no chat without a neighbour, no cat without the cat.
+- **Tea on a side table.** A table at every lounger and a tulip glass on
+  it, taken, stirred, sipped and put back; refilled after five minutes.
+- **Marks over the head** for a chat in turns, a call and music, and a
+  `resting:` line on the hover card.
+
+What looking found, beyond the plan: a lean that grew every frame (400 rad
+by the end of a tea), a whole figure rolling off the lounger in a stretch,
+and a prop costing two draw calls for a shadow nobody could see. Measured
+with `?demo=60&debug`: 60 fps, 281–285 calls against 290. With the demo
+held still, 7 kinds of activity in 90 s. 498 frontend tests pass. A short
+figure's hand stays about 12 cm from its glass on the table; that is noted
+in the plan.
+
 ## Why this order
 
 The click first, because the plan promised it and it is the thing a person
@@ -657,20 +1120,36 @@ and it has a history to look back at. Sprint 19 is the visual rework: the
 figures read as people, they sit on the loungers, the strokes are strokes
 and the pool is a place.
 
-What is left of Sprint 19, in the order I would take it:
+Sprint 20 put the pool in three dimensions. Most of what was left of
+Sprint 19 came with it: the spine, the wake, the deck, the reflections of
+the sky, and the lower half of the water, which is seen from above now.
 
-- **The lower half of the water.** It has tiles, light shafts, lane ropes
-  and weeds now, and it is still the emptiest part of the picture. A
-  swimmer in the deep lane, a pool toy, a bench under the water.
-- **The spine.** The butterfly's wave travels down the body in one value,
-  because the rig has no spine to bend along. Two or three segments
-  between the hip and the shoulder would make the crawl's roll and the
-  butterfly's wave right.
-- **The wake.** A hand that goes into the water pushes some of it up; the
-  water around the swimmer does not move yet.
-- **The deck.** The terrace is a flat band with vertical lines on it. It
-  wants perspective, a fence, a hedge and a towel on every lounger.
-- **The reflections.** The loungers and the parasol are not on the water.
+What is left of Sprint 20, in the order I would take it:
+
+- **The second observer round on the 3D pool.**
+- **The 2D pool goes**, once the 3D one has been used for a while. Until
+  then it is frozen.
+- **Reflections of the loungers** in the water (a `Reflector` at half
+  resolution, on fast machines only). The sky is reflected already.
+- **The lab's noise and spring sliders**, if they are needed.
+
+After that comes **the living pool, Sprints 21 to 27**, planned step by
+step in `docs/plans/` (start with `docs/plans/README.md`). Each sprint's
+plan is written to be carried out on its own:
+
+- **21:** the tools and the polish.
+- **22:** the work an agent is doing shows in how it swims, and a session
+  waiting for the person raises its hand.
+- **23:** a terrace with a slide, a diving board, a hot tub, a kiosk and a
+  ping-pong table.
+- **24:** new ways into the water.
+- **25:** errands on the deck.
+- **26:** a few creatures, the sky and the night.
+- **27:** moments, a touring camera and the last observer round.
+
+Two decisions shape it:
+- the only people in the pool are the agents;
+- there are never more than four animals on screen at once.
 
 The observer that watched the dashboard through all of it found the two
 bugs that the tests did not: the characters stood at the gate and never

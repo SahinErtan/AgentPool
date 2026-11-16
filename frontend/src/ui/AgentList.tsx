@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, type KeyboardEvent } from 'react';
 import { matches } from '../state/filter';
 import type { AgentView } from '../net/types';
 import { store, type KindFilter, type StatusFilter } from '../state/store';
@@ -7,6 +7,8 @@ import { keyAction, nextSelection } from './keyboard';
 import { useTick } from './useTick';
 import { spanDescription, workingSpan } from './timeline';
 import { cutAtWord, plainText } from './Inspector';
+import { agentNames, tidyName } from '../scene/names';
+import { arrangeAgents, familyColour } from './agentTree';
 
 const KIND_MARK: Record<string, string> = {
   session: '◆',
@@ -26,7 +28,6 @@ const KIND_FILTERS: { value: KindFilter; label: string }[] = [
   { value: 'all', label: 'Every kind' },
   { value: 'session', label: 'Sessions' },
   { value: 'subagent', label: 'Subagents' },
-  { value: 'mcp', label: 'MCP servers' },
   { value: 'workflow', label: 'Workflows' },
 ];
 
@@ -58,6 +59,9 @@ function looksLikePath(text: string): boolean {
  * which agent it is, so they come after the description.
  */
 export function rowDescription(agent: AgentView): string {
+  // What the agent is doing now says the most; the backend sends it from Sprint 28.
+  const activity = agent.activity?.replace(/\s+/g, ' ').trim();
+  if (activity) return cutAtWord(activity, ROW_TEXT_LIMIT);
   const detail = agent.detail ? plainText(agent.detail) : '';
   if (detail && !looksLikePath(detail)) {
     return cutAtWord(detail, ROW_TEXT_LIMIT);
@@ -76,9 +80,9 @@ export function rowDescription(agent: AgentView): string {
  * It has to say which agent this is: the label alone is the kind of the
  * agent, and seven rows can share it.
  */
-export function rowAccessibleName(agent: AgentView, now: number): string {
+export function rowAccessibleName(agent: AgentView, now: number, name: string = agent.label): string {
   return [
-    agent.label,
+    name,
     agent.status,
     rowDescription(agent),
     elapsed(agent.started_at ?? agent.created_at, now),
@@ -108,9 +112,11 @@ export function AgentList() {
     focusNonce,
   } = useStore();
   const now = useTick(1000);
-  const list = [...agents.values()]
-    .filter((agent) => matches(agent, filter))
-    .sort((a, b) => a.id.localeCompare(b.id));
+  // The names are those of the whole pool, not of the filtered list: a row
+  // must say the same name as the label over the agent's head.
+  const names = useMemo(() => agentNames([...agents.values()]), [agents]);
+  const items = arrangeAgents([...agents.values()].filter((agent) => matches(agent, filter)));
+  const list = items.flatMap((item) => (item.kind === 'agent' ? [item.agent] : []));
 
   // The agents that are gone. A finished agent walks out of the scene and
   // the backend forgets it, but the panel remembers it for a while — and
@@ -216,7 +222,17 @@ export function AgentList() {
         aria-labelledby="agent-list-heading"
         onKeyDown={onKeyDown}
       >
-        {list.map((agent) => {
+        {items.map((item) => {
+          if (item.kind === 'heading') {
+            return (
+              <li key={`heading-${item.text}`} role="presentation" className="agent-list__heading">
+                {item.text}
+              </li>
+            );
+          }
+          const agent = item.agent;
+          const name = names.get(agent.id)?.short ?? agent.label;
+          const dot = familyColour(agent);
           const span = workingSpan(agent.started_at, agent.finished_at, now);
           const description = rowDescription(agent);
           return (
@@ -224,7 +240,7 @@ export function AgentList() {
               key={agent.id}
               role="option"
               aria-selected={agent.id === selectedId}
-              aria-label={rowAccessibleName(agent, now)}
+              aria-label={rowAccessibleName(agent, now, name)}
               // The full detail stays reachable on hover: the second line
               // of the row is cut to fit the panel.
               title={agent.detail ? plainText(agent.detail) : undefined}
@@ -238,6 +254,7 @@ export function AgentList() {
               className={[
                 'agent',
                 `agent--${agent.status}`,
+                item.depth === 1 ? 'agent--child' : '',
                 agent.id === selectedId ? 'is-selected' : '',
                 agent.id === hoveredId ? 'is-hovered' : '',
               ]
@@ -254,7 +271,16 @@ export function AgentList() {
                 <span className="agent__mark" aria-hidden="true">
                   {KIND_MARK[agent.kind] ?? '·'}
                 </span>
-                <span className="agent__label">{agent.label}</span>
+                <span className="agent__label">
+                  {dot ? (
+                    <span
+                      className="agent__dot"
+                      style={{ background: dot }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {name}
+                </span>
                 <span className="agent__time">
                   {elapsed(agent.started_at ?? agent.created_at, now)}
                 </span>
@@ -291,7 +317,7 @@ export function AgentList() {
               <span className="agent__mark" aria-hidden="true">
                 {KIND_MARK[entry.kind] ?? '·'}
               </span>
-              <span className="agent__label">{entry.label}</span>
+              <span className="agent__label">{tidyName(entry.name)}</span>
               <span className="agent__time">
                 {entry.finishedAt ? elapsed(entry.finishedAt, now) : ''}
               </span>

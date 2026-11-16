@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -19,6 +20,47 @@ from .events import AgentEvent, AgentKind, AgentStatus
 # the idlest go first, and the scene is told about every one of them.
 MAX_AGENTS = 300
 
+# The names that say nothing about the agent: the kind, or "main" that every
+# hook used to write. A real name always wins over one of these, so a session
+# that the reconciler called "pool-sprint" keeps that name when a hook calls
+# it "main".
+PLACEHOLDERS = frozenset({"main", "session", "subagent", "task", ""})
+
+# The name a new agent gets when the event that creates it has none.
+_PLACEHOLDER_BY_KIND = {
+    AgentKind.SESSION: "main",
+    AgentKind.SUBAGENT: "subagent",
+    AgentKind.WORKFLOW: "task",
+    AgentKind.MCP: "",
+}
+
+
+def is_placeholder(label: Optional[str]) -> bool:
+    """True when a label is missing or only says what kind of agent it is."""
+    return (label or "").strip() in PLACEHOLDERS
+
+
+def _tidy(text: Optional[str]) -> Optional[str]:
+    """A name with its whitespace collapsed, or None when nothing is left.
+
+    A name can run over several lines in a prompt or a description; the
+    card shows it whole, but it must not break the row it sits in.
+    """
+    collapsed = " ".join((text or "").split())
+    return collapsed or None
+
+
+def project_of(cwd: Optional[str]) -> Optional[str]:
+    """The project an agent works in: the last folder of its working directory.
+
+    Both separators are accepted, because a hook may come from a Windows
+    machine on the same network.
+    """
+    if not cwd:
+        return None
+    parts = [part for part in re.split(r"[\\/]", cwd) if part]
+    return parts[-1] if parts else None
+
 
 @dataclass
 class AgentState:
@@ -34,6 +76,14 @@ class AgentState:
     subagent_type: Optional[str] = None
     tool_name: Optional[str] = None
     detail: Optional[str] = None
+    # The task the agent was given. Tool notes never write it: they write
+    # ``detail``, which is overwritten by the next tool, and this is not.
+    description: Optional[str] = None
+    # The last thing the person asked the session. Kept for the card.
+    prompt: Optional[str] = None
+    # What the agent is doing right now. It is cleared when the agent's
+    # turn ends, so a finished agent never shows a tool it no longer runs.
+    activity: Optional[str] = None
     cwd: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     last_event_at: float = field(default_factory=time.time)
@@ -49,19 +99,56 @@ class AgentState:
         default_factory=lambda: deque(maxlen=50)
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _name(self, project: Optional[str], parent: Optional["AgentState"]) -> str:
+        """The name the person sees, before the screen tells duplicates apart.
+
+        The screen adds the project or the parent when two agents would
+        otherwise carry the same name, so this is only the first choice:
+        the task for a subagent, the real name for a session.
+        """
+        if self.kind is AgentKind.SESSION:
+            if not is_placeholder(self.label):
+                return _tidy(self.label)
+            if project:
+                return project
+            session_id = self.session_id or self.id.split(":", 1)[-1]
+            return f"session {session_id[:4]}" if session_id else "session"
+        if self.kind is AgentKind.SUBAGENT:
+            return (
+                _tidy(self.description)
+                or _tidy(self.subagent_type)
+                or _tidy(self.label)
+                or "subagent"
+            )
+        if self.kind is AgentKind.WORKFLOW:
+            return _tidy(self.description) or _tidy(self.label) or "task"
+        return _tidy(self.label) or "mcp"
+
+    def to_dict(self, parent: Optional["AgentState"] = None) -> Dict[str, Any]:
+        """The payload the browser and the API get for this agent.
+
+        A subagent or a workflow that has no folder of its own is shown in
+        its parent's, so ``parent`` is passed by whoever knows the registry.
+        """
+        cwd = self.cwd or (parent.cwd if parent is not None else None)
+        project = project_of(cwd)
         return {
             "id": self.id,
             "kind": self.kind.value,
             "status": self.status.value,
             "label": self.label,
+            "name": self._name(project, parent),
+            "description": self.description,
+            "prompt": self.prompt,
+            "activity": self.activity,
             "session_id": self.session_id,
             "parent_id": self.parent_id,
             "tool_use_id": self.tool_use_id,
             "subagent_type": self.subagent_type,
             "tool_name": self.tool_name,
             "detail": self.detail,
-            "cwd": self.cwd,
+            "cwd": cwd,
+            "project": project,
             "created_at": self.created_at,
             "last_event_at": self.last_event_at,
             "started_at": self.started_at,
@@ -98,6 +185,10 @@ class AgentRegistry:
     ) -> None:
         self._agents: Dict[str, AgentState] = {}
         self._pending_by_tool_use: Dict[str, Dict[str, Any]] = {}
+        #: The name of every session seen, by session id. It outlives the
+        #: session's record (see ``payload``) and is small: one string per
+        #: session since the backend started.
+        self._session_names: Dict[str, str] = {}
         self._idle_ttl_s = idle_ttl_s
         self._session_ttl_s = session_ttl_s
         self._exit_grace_s = exit_grace_s
@@ -126,6 +217,19 @@ class AgentRegistry:
     def get(self, agent_id: str) -> Optional[AgentState]:
         return self._agents.get(agent_id)
 
+    def payload(self, state: AgentState) -> Dict[str, Any]:
+        """The payload of one agent, with what it takes from its parent."""
+        parent = self._agents.get(state.parent_id) if state.parent_id else None
+        payload = state.to_dict(parent)
+        # The name of the session the agent belongs to. It is remembered
+        # after the session's own character has gone: a session that ends
+        # its turn leaves the pool, while its background subagents swim on,
+        # and they still have to say whose they are.
+        payload["session_name"] = (
+            self._session_names.get(state.session_id) if state.session_id else None
+        )
+        return payload
+
     def __len__(self) -> int:
         return len(self._agents)
 
@@ -133,6 +237,11 @@ class AgentRegistry:
 
     def apply(self, event: AgentEvent) -> List[AgentState]:
         """Apply one event and return the agents it changed."""
+        # An MCP server is not an agent. Its calls are shown on the session
+        # that made them. Old journal records of it are dropped here, so a
+        # replay at boot does not put the server back on the screen.
+        if event.kind is AgentKind.MCP:
+            return []
         now = self._clock()
         kind = event.type
 
@@ -141,20 +250,22 @@ class AgentRegistry:
             # result tells us which agent it produced.
             if event.tool_use_id:
                 self._pending_by_tool_use[event.tool_use_id] = {
-                    "detail": event.detail,
+                    "description": event.description or event.detail,
                     "subagent_type": event.subagent_type,
-                    "label": event.label,
                 }
             return []
 
         if kind == "spawn_bind":
             hint = self._pending_by_tool_use.pop(event.tool_use_id or "", {})
             state = self._upsert(event, now)
-            if hint.get("detail"):
-                state.detail = hint["detail"]
+            if hint.get("description"):
+                # The description is the agent's name in the pool. The detail
+                # is still set, as it always was, for the views that read it.
+                state.description = hint["description"]
+                state.detail = hint["description"]
             if hint.get("subagent_type"):
                 state.subagent_type = hint["subagent_type"]
-                state.label = hint.get("label") or hint["subagent_type"]
+                state.label = hint["subagent_type"]
             if event.tool_use_id:
                 state.tool_use_id = event.tool_use_id
             return [state]
@@ -194,6 +305,7 @@ class AgentRegistry:
             state.finished_at = now
             state.finished_deadline = now + self._exit_grace_s
             state.leaving_deadline = None
+            state.activity = None
             if event.detail:
                 state.detail = event.detail
             if event.tool_name:
@@ -207,16 +319,24 @@ class AgentRegistry:
             state.status = AgentStatus.LEAVING
             state.leaving_deadline = now + self._exit_grace_s
             state.finished_deadline = None
+            state.activity = None
             if event.detail:
                 state.detail = event.detail
             return [state]
 
         if kind == "note":
+            # A subagent is born from SubagentStart or the disk, never from a
+            # tool note: a late PostToolUse after the agent was reaped would
+            # otherwise bring a ghost back into the pool.
+            if event.kind is AgentKind.SUBAGENT and event.agent_id not in self._agents:
+                return []
             state = self._upsert(event, now)
             if event.tool_name:
                 state.tool_name = event.tool_name
             if event.detail:
                 state.detail = event.detail
+            if event.activity is not None:
+                state.activity = event.activity
             if state.status is AgentStatus.IDLE and event.status is AgentStatus.WORKING:
                 state.status = AgentStatus.WORKING
                 if state.started_at is None:
@@ -232,23 +352,40 @@ class AgentRegistry:
                 id=event.agent_id,
                 kind=event.kind,
                 status=event.status,
-                label=event.label,
+                label=event.label or _PLACEHOLDER_BY_KIND.get(event.kind, ""),
                 session_id=event.session_id,
                 parent_id=event.parent_id,
                 tool_use_id=event.tool_use_id,
                 subagent_type=event.subagent_type,
                 tool_name=event.tool_name,
                 detail=event.detail,
+                description=event.description,
+                prompt=event.prompt,
+                activity=event.activity,
+                cwd=event.cwd,
                 created_at=now,
                 last_event_at=now,
             )
             self._agents[event.agent_id] = state
         state.kind = event.kind
-        state.label = event.label or state.label
+        # A placeholder never replaces a real name. The name only changes
+        # when the event brings a real one, or when there is no real one yet.
+        if event.label and (not is_placeholder(event.label) or is_placeholder(state.label)):
+            state.label = event.label
         state.session_id = event.session_id or state.session_id
         state.parent_id = event.parent_id or state.parent_id
+        # The folder a hook reports is the shell's current folder, which
+        # moves with every `cd`. The project is where the agent started:
+        # the first folder seen, unless the disk (the session file, written
+        # at launch) says otherwise.
+        if event.cwd and (state.cwd is None or event.source == "reconcile"):
+            state.cwd = event.cwd
         if event.subagent_type:
             state.subagent_type = event.subagent_type
+        if event.description:
+            state.description = event.description
+        if event.prompt:
+            state.prompt = event.prompt
         if event.tool_use_id:
             state.tool_use_id = event.tool_use_id
         state.last_event_at = now
@@ -261,6 +398,8 @@ class AgentRegistry:
                 "detail": event.detail,
             }
         )
+        if state.kind is AgentKind.SESSION and state.session_id:
+            self._session_names[state.session_id] = state._name(project_of(state.cwd), None)
         return state
 
     # -- expiry ------------------------------------------------------

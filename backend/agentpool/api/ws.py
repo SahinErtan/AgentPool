@@ -84,7 +84,7 @@ class WsHub:
         self._sent = 0
 
     def agent_view(self, state) -> Dict[str, Any]:
-        payload = state.to_dict()
+        payload = self.registry.payload(state)
         payload["scene"] = self.scene.scene_id
         payload["presentation"] = self.scene.presentation(state)
         return payload

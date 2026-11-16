@@ -54,7 +54,9 @@ def fetch(url: str, timeout: float = 3.0) -> Dict[str, Any]:
 def agent_line(agent: Dict[str, Any]) -> str:
     """One line about one agent, for a human."""
     status = agent.get("status", "?")
-    label = agent.get("label") or agent.get("id", "?")
+    # The name is what the dashboard shows; the label is what older
+    # backends send, and the id is the last resort.
+    label = agent.get("name") or agent.get("label") or agent.get("id", "?")
     detail = agent.get("detail") or ""
     if len(detail) > 52:
         detail = detail[:49] + "..."
@@ -84,7 +86,19 @@ def render(state: Dict[str, Any]) -> str:
 def render_agent(agent: Dict[str, Any]) -> str:
     """The details of one agent, for a human."""
     lines = [agent_line(agent)]
-    for key in ("id", "kind", "session_id", "cwd", "detail", "started_at", "finished_at"):
+    for key in (
+        "id",
+        "kind",
+        "session_id",
+        "cwd",
+        "project",
+        "description",
+        "activity",
+        "prompt",
+        "detail",
+        "started_at",
+        "finished_at",
+    ):
         value = agent.get(key)
         if value not in (None, ""):
             lines.append(f"  {key:<12} {value}")

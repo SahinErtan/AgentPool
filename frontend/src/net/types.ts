@@ -58,6 +58,27 @@ export interface AgentView {
   presentation: AgentPresentation;
   /** The last few things that happened to this agent. */
   events?: AgentEventView[];
+  /*
+   * Sprint 28. Every field below is optional: a backend from before the
+   * sprint does not send them, and the frontend then works from `label`
+   * and `cwd`. The naming rule is in `scene/names.ts`.
+   */
+  /** The name the backend chose for the agent, without the duplicate handling. */
+  name?: string | null;
+  /** The last folder of the agent's working directory. */
+  project?: string | null;
+  /** The task a subagent or a workflow was given, in full. */
+  description?: string | null;
+  /** The last prompt of the session, in markdown. */
+  prompt?: string | null;
+  /** What the agent is doing right now, in a few words: "Bash: npm test". */
+  activity?: string | null;
+  /**
+   * The name of the session the agent belongs to. The backend remembers it
+   * after the session's own character has left, so a background subagent
+   * still says whose it is.
+   */
+  session_name?: string | null;
 }
 
 export interface SessionEventView {

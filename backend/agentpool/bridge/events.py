@@ -40,11 +40,23 @@ class AgentEvent:
     session_id: Optional[str]
     parent_id: Optional[str]
     status: AgentStatus
-    label: str
+    # None means the event does not name the agent. The registry keeps the
+    # name it has, or a placeholder for the kind when it has none yet.
+    label: Optional[str] = None
     detail: Optional[str] = None
     tool_name: Optional[str] = None
     tool_use_id: Optional[str] = None
     subagent_type: Optional[str] = None
+    # The folder the agent works in. Only the events that know it set it;
+    # a subagent's events do not, and the registry takes the parent's.
+    cwd: Optional[str] = None
+    # The task the agent was given (the Agent tool's description, the
+    # transcript's, or a background task's). Only these sources set it.
+    description: Optional[str] = None
+    # The last thing the person asked the session, from UserPromptSubmit.
+    prompt: Optional[str] = None
+    # What the agent is doing right now, in a few words ("Bash: npm test").
+    activity: Optional[str] = None
     source: str = "hook"  # hook | reconcile | transcript
     raw: Dict[str, Any] = field(default_factory=dict)
 

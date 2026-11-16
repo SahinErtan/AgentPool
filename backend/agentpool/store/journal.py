@@ -36,6 +36,17 @@ def _encode(value: Any) -> Any:
     return value
 
 
+def _optional_text(value: Any) -> Optional[str]:
+    """A journal field that may be missing or null, kept as text when it is set.
+
+    A label that the event did not name is written as ``null``; turning that
+    into the text "None" would give every such agent a name of its own.
+    """
+    if value is None:
+        return None
+    return str(value)
+
+
 def _agent_event(payload: Dict[str, Any]) -> Optional[AgentEvent]:
     """Rebuild the agent event a journal line describes.
 
@@ -55,11 +66,15 @@ def _agent_event(payload: Dict[str, Any]) -> Optional[AgentEvent]:
             session_id=payload.get("session_id"),
             parent_id=payload.get("parent_id"),
             status=AgentStatus(str(payload.get("status", AgentStatus.IDLE.value))),
-            label=str(payload.get("label", "")),
+            label=_optional_text(payload.get("label")),
             detail=payload.get("detail"),
             tool_name=payload.get("tool_name"),
             tool_use_id=payload.get("tool_use_id"),
             subagent_type=payload.get("subagent_type"),
+            cwd=payload.get("cwd"),
+            description=payload.get("description"),
+            prompt=payload.get("prompt"),
+            activity=payload.get("activity"),
             source=str(payload.get("source", "hook")),
             raw=payload.get("raw") or {},
         )

@@ -1,59 +1,27 @@
 /**
- * The animator: blends the pose layers and writes the result onto the rig.
+ * The animator: the 2D rig's half of the motion.
  *
- * The weights are damped; the layer oscillations are not. That is what keeps
- * the strokes crisp while still cross-fading smoothly, and it makes
- * interruption free — an agent that goes idle mid-swim simply has its `swim`
- * weight fall to zero.
+ * The pose itself comes from the `PoseDriver`, which knows nothing about
+ * drawing and is shared with the 3D scene. This class writes that pose onto
+ * the Pixi rig: the joint rotations, the blink, the hair and the prop in the
+ * hand.
  */
 
 import { damp } from './math';
-import { channelSeed, fbm } from './noise';
-import { dampingFor, spring, springStep, type SpringState } from './spring';
 import { buildProps, type PropSet, type Rig } from './rig';
 import type { CharacterSpec } from './spec';
-import {
-  activityPose,
-  addPose,
-  blendPose,
-  climbPose,
-  copyPose,
-  loungePose,
-  reactionDelta,
-  REACTION_DURATION_S,
-  resetPose,
-  restPose,
-  SWIM_STYLES,
-  walkPose,
-  zeroPose,
-  type Motion,
-  type Pose,
-  type ReactionKind,
-} from './poses';
+import type { Pose, ReactionKind } from './poses';
+import { PoseDriver, type CharState, type Weights } from '../motion/driver';
 
-export type CharState =
-  | 'resting'
-  | 'walking'
-  | 'lounging'
-  | 'activity'
-  | 'swimming'
-  | 'climbing';
-
-interface Weights {
-  rest: number;
-  lounge: number;
-  activity: number;
-  walk: number;
-  swim: number;
-  climb: number;
-}
-
+export type { CharState };
 export { damp };
 
 export class CharacterAnimator {
   readonly rig: Rig;
   readonly spec: CharacterSpec;
   readonly props: PropSet;
+  /** The half that computes the pose. */
+  readonly driver: PoseDriver;
   /**
    * The underwater twin of the rig.
    *
@@ -63,125 +31,39 @@ export class CharacterAnimator {
    */
   secondary: Rig | null = null;
 
-  private weights: Weights = { rest: 1, lounge: 0, activity: 0, walk: 0, swim: 0, climb: 0 };
-  /** The damped lounge weight before the activity is taken out of it. */
-  private loungeRaw = 0;
-  /**
-   * The blended pose.
-   *
-   * It is made once and then used again: the layers are blended into it
-   * every frame, so the frame does not allocate a pose of its own.
-   */
-  private pose: Pose = zeroPose();
-  private layerRest: Pose = zeroPose();
-  private layerLounge: Pose = zeroPose();
-  private layerActivity: Pose = zeroPose();
-  private layerWalk: Pose = zeroPose();
-  private layerSwim: Pose = zeroPose();
-  private layerClimb: Pose = zeroPose();
-
-  private state: CharState = 'resting';
-  /**
-   * The character's own clock, in seconds.
-   *
-   * It used to be the scene's clock, which every character shared: the
-   * whole pool breathed at the same moment and looked like a machine.
-   * Each character has its own now, and its own noise on top of it.
-   */
-  private time: number;
-  /** The clock and the seed handed to the pose layers. */
-  private readonly motion: Motion = { t: 0, seed: 0 };
-  private swimPhase: number;
-  /**
-   * The phase of the walk.
-   *
-   * It is advanced by the distance the character covered, not by the time
-   * that passed. A character that is held up by another one used to keep
-   * walking its legs on the spot.
-   */
-  private walkPhase: number;
-  /** How many strokes the character has finished. */
-  private strokes = 0;
-  private activityU = 0;
-  private activityOn = false;
-  private idleTimer = 0;
-  private cooldownLeft = 0;
-  private climbU = 0;
-  private blinkTimer: number;
-  private blinking = false;
-  private blinkProgress = 0;
-  /** The reaction that is playing, if any. */
-  private reaction: ReactionKind | null = null;
-  private reactionU = 0;
-  private reactionDuration = REACTION_DURATION_S;
-  /** True when the reaction is scrubbed by hand instead of playing. */
-  private reactionFrozen = false;
-  private layerReaction: Pose = zeroPose();
-
-  /**
-   * The springs.
-   *
-   * A wave says where a thing is. A spring says where a thing is going and
-   * how it gets there: it lags, it overshoots and it settles. That lag is
-   * what makes a movement read as physical.
-   */
-  private headPitchSpring: SpringState = spring(0);
-  private headYawSpring: SpringState = spring(0);
-  private hairSpring: SpringState = spring(0);
-  /** The channel of the noise that the body rides on. */
-  private readonly rideSeed: number;
-
   constructor(rig: Rig) {
     this.rig = rig;
     this.spec = rig.spec;
+    this.driver = new PoseDriver(rig.spec);
     this.props = buildProps(rig.spec, rig.skeleton);
     for (const prop of Object.values(this.props)) {
       prop.visible = false;
       rig.propLayer.addChild(prop);
     }
-    this.swimPhase = this.spec.phaseOffset;
-    this.walkPhase = this.spec.phaseOffset;
-    this.blinkTimer = this.spec.blinkInterval * this.spec.phaseOffset;
-    // The clock starts at a different place for every character, so two
-    // characters that arrive at the same moment are not in the same place
-    // in their own cycle either.
-    this.time = this.spec.phaseOffset * 7;
-    this.motion.seed = this.spec.noiseSeed;
-    this.rideSeed = channelSeed(this.spec.noiseSeed, 7);
     this.rig.facing.scale.x = this.spec.flip ? -1 : 1;
   }
 
   setState(next: CharState): void {
-    if (next === this.state) return;
-    this.state = next;
-    if (next === 'climbing') this.climbU = 0;
+    this.driver.setState(next);
   }
 
   get currentState(): CharState {
-    return this.state;
+    return this.driver.currentState;
   }
 
   /** True while the character is performing its idle activity. */
   get isDoingActivity(): boolean {
-    return this.activityOn;
+    return this.driver.isDoingActivity;
   }
 
-  /**
-   * React to something that happened in the pool.
-   *
-   * The reaction is played on top of whatever the character is doing, and
-   * it does not interrupt it: a character that is swimming keeps swimming
-   * and merely lifts its head.
-   */
-  react(kind: ReactionKind, duration = REACTION_DURATION_S): void {
-    this.reaction = kind;
-    this.reactionU = 0;
-    this.reactionDuration = duration;
+  /** React to something that happened in the pool. */
+  react(kind: ReactionKind, duration?: number): void {
+    this.driver.react(kind, duration);
   }
 
   /** True while a reaction is playing. */
   get isReacting(): boolean {
-    return this.reaction !== null;
+    return this.driver.isReacting;
   }
 
   /**
@@ -190,164 +72,22 @@ export class CharacterAnimator {
    * @param dtMs The time that passed, in milliseconds.
    */
   update(dtMs: number): void {
-    const dt = dtMs / 1000;
-    const w = this.weights;
-    // The character keeps its own time.
-    this.time += dt;
-    this.motion.t = this.time;
-
-    const wantSwim = this.state === 'swimming' ? 1 : 0;
-    const wantWalk = this.state === 'walking' ? 1 : 0;
-    const wantClimb = this.state === 'climbing' ? 1 : 0;
-    const wantActivity = this.state === 'activity' ? 1 : 0;
-    const wantLounge = this.state === 'lounging' || this.state === 'activity' ? 1 : 0;
-
-    w.swim = damp(w.swim, wantSwim, 10, dtMs);
-    w.walk = damp(w.walk, wantWalk, 10, dtMs);
-    w.climb = damp(w.climb, wantClimb, 12, dtMs);
-    w.activity = damp(w.activity, wantActivity, 6, dtMs);
-
-    // The activity is a *sub-layer* of the lounge, so the lounge weight is
-    // damped on its own and the activity is taken out of it. Subtracting the
-    // activity from the damped value instead would create a feedback loop
-    // whose fixed point is 1 - activity/damping, i.e. a negative weight.
-    this.loungeRaw = damp(this.loungeRaw, wantLounge, 8, dtMs);
-    const excess = Math.max(0, w.activity - this.loungeRaw);
-    w.activity = Math.max(0, w.activity - excess);
-    w.lounge = Math.max(0, this.loungeRaw - w.activity);
-    w.rest = Math.max(0, 1 - w.lounge - w.activity - w.walk - w.swim - w.climb);
-
-    // --- phases ----------------------------------------------------
-    if (this.state === 'swimming') {
-      const style = SWIM_STYLES[this.spec.swimStyle];
-      const before = this.swimPhase;
-      this.swimPhase = (this.swimPhase + dt * style.cadence * this.spec.speedScale) % 1;
-      // The phase wrapped: a stroke is over.
-      if (this.swimPhase < before) this.strokes += 1;
-    }
-    // The walk is not advanced here: it is advanced by the distance the
-    // character covered, so a character that is held up by another one
-    // stops walking its legs.
-    if (this.state === 'climbing') {
-      this.climbU = Math.min(1, this.climbU + dt / 1.2);
-    }
-
-    // --- idle activity ---------------------------------------------
-    this.updateIdleActivity(dt);
-
-    // --- build the layers ------------------------------------------
-    //
-    // Only the layers that are wanted are built. A swimmer has no weight
-    // on the rest and the lounge, and a figure on the deck has no weight
-    // on the swim, and the pool is meant to hold sixty of them.
-    if (w.rest > 0.001) restPose(this.layerRest, this.motion);
-    if (w.lounge + w.activity > 0.001) loungePose(this.layerLounge, this.motion);
-    if (w.walk > 0.001) walkPose(this.layerWalk, this.walkPhase);
-    if (w.climb > 0.001) climbPose(this.layerClimb, this.climbU);
-    if (w.swim > 0.001) {
-      SWIM_STYLES[this.spec.swimStyle].fn(this.layerSwim, this.swimPhase, this.spec);
-      // The body rides on the stroke, and the ride is never quite the same
-      // twice. The stroke itself stays a cycle, because a crawl *is* a
-      // cycle; it is the layer on top of it that wanders.
-      this.layerSwim.bob += fbm(this.time * 0.42, this.rideSeed) * 0.014;
-      this.layerSwim.bodyRoll += fbm(this.time * 0.31, this.rideSeed + 1) * 0.015;
-    }
-    if (this.activityOn || w.activity > 0.001) {
-      activityPose(this.layerActivity, this.spec.idleActivity, this.activityU, this.motion);
-    } else {
-      copyPose(this.layerRest, this.layerActivity);
-    }
-
-    // --- blend ------------------------------------------------------
-    // The pose is reused, so it is put back to zero first: nothing of the
-    // frame before may leak into this one.
-    resetPose(this.pose);
-    blendPose(this.pose, this.layerRest, w.rest, this.layerLounge, w.lounge);
-    blendPose(this.pose, this.pose, 1, this.layerActivity, w.activity);
-    blendPose(this.pose, this.pose, 1, this.layerWalk, w.walk);
-    blendPose(this.pose, this.pose, 1, this.layerSwim, w.swim);
-    blendPose(this.pose, this.pose, 1, this.layerClimb, w.climb);
-
-    // The reaction sits on top of the pose. It fades in and out on its
-    // own, so the character goes back to what it was doing without a jump.
-    if (this.reaction !== null) {
-      if (!this.reactionFrozen) {
-        this.reactionU = Math.min(1, this.reactionU + dt / this.reactionDuration);
-      }
-      const weight = Math.sin(this.reactionU * Math.PI) ** 2;
-      reactionDelta(this.layerReaction, this.reaction, this.reactionU);
-      addPose(this.pose, this.layerReaction, weight);
-      if (this.reactionU >= 1 && !this.reactionFrozen) this.reaction = null;
-    }
-
-    // The head arrives a moment after the body, and the hair a moment
-    // after the head.
-    springStep(this.headPitchSpring, this.pose.headPitch, 14, dampingFor(14, 0.7), dtMs);
-    this.pose.headPitch = this.headPitchSpring.value;
-    springStep(this.headYawSpring, this.pose.headYaw, 11, dampingFor(11, 0.7), dtMs);
-    this.pose.headYaw = this.headYawSpring.value;
-    springStep(this.hairSpring, this.pose.headPitch, 9, dampingFor(9, 0.5), dtMs);
-
-    this.applyPose(this.pose);
-    this.updateBlink(dtMs);
-    this.updateProps();
+    const pose = this.driver.update(dtMs);
+    this.applyPose(pose);
+    const eyes = this.driver.eyes;
+    this.rig.eyes.scale.y = eyes;
+    this.updateProps(pose);
     // The hair swings about after the head.
-    this.rig.hair.rotation = this.hairSpring.value * 0.5;
-    if (this.secondary) this.secondary.hair.rotation = this.hairSpring.value * 0.5;
-  }
-
-  private updateIdleActivity(dt: number): void {
-    if (this.spec.idleActivity === 'none') return;
-    if (this.state !== 'lounging' && this.state !== 'activity') {
-      this.activityOn = false;
-      return;
-    }
-    if (this.activityOn) {
-      this.idleTimer += dt;
-      this.activityU = Math.min(1, this.idleTimer / this.spec.idleDuration);
-      if (this.idleTimer >= this.spec.idleDuration) {
-        this.activityOn = false;
-        this.idleTimer = 0;
-        this.cooldownLeft = this.spec.idleCooldown;
-      }
-    } else if (this.cooldownLeft > 0) {
-      this.cooldownLeft -= dt;
-    } else {
-      this.idleTimer += dt;
-      if (this.idleTimer >= this.spec.idleStartDelay) {
-        this.activityOn = true;
-        this.idleTimer = 0;
-        this.activityU = 0;
-      }
-    }
-    // The state machine follows the activity so the blend target is right.
-    if (this.activityOn && this.state === 'lounging') {
-      this.setState('activity');
-    } else if (!this.activityOn && this.state === 'activity') {
-      this.setState('lounging');
+    const hair = this.driver.hair * 0.5;
+    this.rig.hair.rotation = hair;
+    if (this.secondary) {
+      this.secondary.hair.rotation = hair;
+      this.secondary.eyes.scale.y = eyes;
     }
   }
 
-  private updateBlink(dtMs: number): void {
-    this.blinkTimer += dtMs / 1000;
-    if (!this.blinking && this.blinkTimer >= this.spec.blinkInterval) {
-      this.blinking = true;
-      this.blinkProgress = 0;
-      this.blinkTimer = 0;
-    }
-    if (this.blinking) {
-      this.blinkProgress += dtMs / 120;
-      const p = Math.min(1, this.blinkProgress);
-      this.rig.eyes.scale.y = Math.abs(Math.cos(p * Math.PI));
-      if (p >= 1) {
-        this.blinking = false;
-        this.rig.eyes.scale.y = 1;
-      }
-    }
-  }
-
-  private updateProps(): void {
-    const showing = this.state === 'activity' && this.activityOn;
+  private updateProps(pose: Pose): void {
+    const prop = this.driver.prop;
     const cup = this.props.cup;
     const book = this.props.book;
     const phone = this.props.phone;
@@ -355,14 +95,12 @@ export class CharacterAnimator {
     const newspaper = this.props.newspaper;
     const cards = this.props.cards;
 
-    cup.visible = showing && this.spec.idleActivity === 'tea';
-    book.visible = showing && this.spec.idleActivity === 'book';
-    phone.visible =
-      showing &&
-      (this.spec.idleActivity === 'phone' || this.spec.idleActivity === 'call');
-    snack.visible = showing && this.spec.idleActivity === 'snack';
-    newspaper.visible = showing && this.spec.idleActivity === 'newspaper';
-    cards.visible = showing && this.spec.idleActivity === 'cards';
+    cup.visible = prop === 'cup';
+    book.visible = prop === 'book';
+    phone.visible = prop === 'phone';
+    snack.visible = prop === 'snack';
+    newspaper.visible = prop === 'newspaper';
+    cards.visible = prop === 'cards';
 
     // The prop sits in the hand; the layer counter-rotates so a raised cup
     // stays upright instead of tipping with the wrist.
@@ -370,8 +108,7 @@ export class CharacterAnimator {
     // The rig turns the hand by -(arm + elbow) on top of the lean of the
     // body, so the prop turns back by exactly that much. It used to turn
     // the wrong way, which was right only while the rig was backwards.
-    layer.rotation =
-      this.pose.armR + this.pose.elbowR - this.pose.bodyPitch - this.pose.bodyRoll;
+    layer.rotation = pose.armR + pose.elbowR - pose.bodyPitch - pose.bodyRoll;
     layer.position.set(0, 0);
 
     if (cup.visible) cup.position.set(0, -this.rig.skeleton.limb * 1.4);
@@ -386,7 +123,7 @@ export class CharacterAnimator {
   setSecondary(rig: Rig): void {
     this.secondary = rig;
     rig.facing.scale.x = this.rig.facing.scale.x;
-    this.applyPose(this.pose);
+    this.applyPose(this.driver.currentPose);
   }
 
   /** Write a pose onto the rig. */
@@ -426,59 +163,42 @@ export class CharacterAnimator {
 
   /** The current layer weights, for the debug overlay. */
   get layerWeights(): Readonly<Weights> {
-    return this.weights;
+    return this.driver.layerWeights;
   }
 
   /** The current blended pose, for the debug overlay. */
   get currentPose(): Pose {
-    return this.pose;
+    return this.driver.currentPose;
   }
 
   /** Debug helper: freeze the swim / walk phase so a stroke can be scrubbed. */
   setPhase(phase: number): void {
-    this.swimPhase = ((phase % 1) + 1) % 1;
-    this.walkPhase = this.swimPhase;
+    this.driver.setPhase(phase);
   }
 
-  /**
-   * Advance the walk by the distance the character covered.
-   *
-   * @param cycles How many whole strides the character took.
-   */
+  /** Advance the walk by the distance the character covered. */
   advanceWalk(cycles: number): void {
-    this.walkPhase = (this.walkPhase + cycles) % 1;
+    this.driver.advanceWalk(cycles);
   }
 
-  /**
-   * How many strokes the character has finished.
-   *
-   * The scene listens to this: a hand that goes into the water pushes
-   * some of it up, and that is what tells the pool that somebody is
-   * swimming in it.
-   */
+  /** How many strokes the character has finished. */
   get strokeCount(): number {
-    return this.strokes;
+    return this.driver.strokeCount;
   }
 
   /** The phase of the walk, for the debug overlay. */
   get walkCycle(): number {
-    return this.walkPhase;
+    return this.driver.walkCycle;
   }
 
   /** Debug helper: force the idle activity to a given progress. */
   forceActivity(progress = 0.4): void {
-    this.activityOn = true;
-    this.activityU = progress;
-    this.idleTimer = progress * this.spec.idleDuration;
-    this.cooldownLeft = 0;
-    this.setState('activity');
+    this.driver.forceActivity(progress);
   }
 
   /** Debug helper: hold a reaction at a given progress. */
   scrubReaction(kind: ReactionKind, progress = 0.5): void {
-    this.reaction = kind;
-    this.reactionU = Math.min(1, Math.max(0, progress));
-    this.reactionFrozen = true;
+    this.driver.scrubReaction(kind, progress);
   }
 
   destroy(): void {
