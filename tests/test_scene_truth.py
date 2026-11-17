@@ -450,6 +450,7 @@ def test_an_agent_the_disk_does_not_know_leaves_on_boot(monkeypatch, tmp_path) -
     from fastapi.testclient import TestClient
 
     from agentpool import app as app_module
+    from agentpool.bridge import reconcile as reconcile_module
     from agentpool.config import Settings
 
     class StubJournal:
@@ -465,6 +466,11 @@ def test_an_agent_the_disk_does_not_know_leaves_on_boot(monkeypatch, tmp_path) -
 
     monkeypatch.setattr(app_module, "Journal", StubJournal)
     monkeypatch.setattr(app_module, "reconcile", lambda *args, **kwargs: [])
+    # The disk is read from two places: the session files and the Claude
+    # CLI. The CLI is not on every machine, and without it nothing is
+    # known, so nothing goes - the test would then be about the machine
+    # it runs on and not about the pool.
+    monkeypatch.setattr(reconcile_module, "read_agents_cli", lambda *args, **kwargs: [])
 
     settings = Settings(
         state_dir=tmp_path,
