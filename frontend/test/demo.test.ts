@@ -102,6 +102,27 @@ test('the crowd keeps its shape over ten minutes', () => {
   assert.ok(generations > 0, 'no new generation ever turned up');
 });
 
+test('a session ends in the demo, so that the gate celebration can be seen', () => {
+  // The gate celebration needs a session that ends. Without one the demo
+  // can never show the confetti or the fireworks.
+  const start = 1_700_000_000;
+  const state = createDemoState(12, start);
+  const ids = new Set<string>();
+  let leaving = 0;
+  let finished = 0;
+  for (let t = 0; t < 900; t += 0.5) {
+    for (const agent of demoAgents(12, start + t, state)) {
+      if (agent.kind !== 'session') continue;
+      ids.add(agent.id);
+      if (agent.status === 'leaving') leaving += 1;
+      if (agent.status === 'finished') finished += 1;
+    }
+  }
+  assert.ok(finished > 0, 'no session ever finished');
+  assert.ok(leaving > 0, 'no session ever left');
+  assert.ok(ids.size > 1, 'the session never changed its id');
+});
+
 test('the crowd has sessions, a workflow and sub-agents, and no MCP server', () => {
   const start = 1_700_000_000;
   const agents = demoAgents(12, start + 5, createDemoState(12, start));

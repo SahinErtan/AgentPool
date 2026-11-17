@@ -1127,9 +1127,22 @@ round: sixty agents swam through each other, and a busy pool froze.
   `make release`, which packs the backend, the plugin and the built frontend
   into `dist/agentpool-<version>.tar.gz`. `make install` no longer needs
   pyenv: a machine without it gets a plain `.venv` next to the project.
+- **The demo has a session that ends.** The gate celebration needs a
+  session whose status becomes "leaving", and the demo feed only ever gave
+  its sessions "working" and "idle": the sub-agents were the ones that
+  finished and left. So the confetti by day and the fireworks at night
+  could not be seen in the demo at all, only with a real backend behind
+  it. A session now works, rests, works again and then ends; it walks out
+  through the gate and the next session walks in through the same gate.
+  Measured in the browser on `?demo=12`: the first session ends at 159
+  seconds, the rockets go up at the gate, and the next session walks in
+  half a second later (`session:demo-s0-0` becomes `session:demo-s0-1`).
+  The next endings follow at 348 and 376 seconds.
 
 Measured with `?demo=24&debug`: 60 fps, 168 draw calls, 419k triangles, the
-console clean. 464 frontend tests and 176 backend tests pass.
+console clean. With `?demo=60&debug`: 58 fps, 266 draw calls against 290,
+985k triangles against 1.2M, the console clean. 465 frontend tests and 176
+backend tests pass.
 
 Known: in a crowded pool two swimmers still stay overlapped for 10 to 30
 seconds now and then, when they cross between the lanes.
@@ -1185,7 +1198,8 @@ separately from what it *inferred*. The screenshots are in
 
 The two findings that are real are on the list for the next round: the
 deck walkers need a separation rule of their own, and the demo needs a
-session that ends.
+session that ends. The second one is done in this round: the demo's
+sessions now end, walk out through the gate, and the next one walks in.
 
 ## Why this order
 
@@ -1243,7 +1257,7 @@ What is left of Sprint 20, in the order I would take it:
   minute; the swimmers have one, the deck has none.
 - **The demo needs a session that ends**, so that the gate celebration
   (confetti by day, fireworks at night) can be seen without a real
-  backend.
+  backend. (Done in Sprint 30.)
 
 After that comes **the living pool, Sprints 21 to 27**, planned step by
 step in `docs/plans/` (start with `docs/plans/README.md`). Each sprint's

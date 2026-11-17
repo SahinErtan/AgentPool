@@ -132,6 +132,15 @@ const QUIET_COUNT = 3;
 const FINISHED_SECONDS = 8;
 /** How long an agent walks out through the gate, in seconds. */
 const LEAVING_SECONDS = 20;
+/**
+ * How many work-and-rest periods a session has before it ends.
+ *
+ * A session that never ends is a session that never walks out through the
+ * gate, and the gate celebration - confetti by day, fireworks at night -
+ * can never be seen in the demo. So the session works, rests, works again
+ * and then ends; the next session walks in through the same gate.
+ */
+const SESSION_CYCLES = 2;
 
 /**
  * The number of fake agents asked for by `?demo` or `?demo=N`, or 0.
@@ -242,7 +251,7 @@ function buildRoster(n: number): Slot[] {
       sessionId: `demo-s${k}`,
       subagentType: null,
       label: session.name,
-      churns: false,
+      churns: true,
       name: session.name,
       project: session.project,
       description: null,
@@ -356,11 +365,23 @@ function permissionWindows(
   return windows;
 }
 
-/** What a session is doing at the given time, in seconds since the demo began. */
+/**
+ * What a session is doing at the given time, in seconds since the demo began.
+ *
+ * A session works and rests in periods, and after a couple of periods it
+ * ends: it is finished, it walks out through the gate, and the next
+ * session takes its place. The generation is in its id, so the scene sees
+ * a new agent walk in through the same gate.
+ */
 function sessionState(elapsed: number, tl: Timeline): SlotState {
-  const k = Math.floor((elapsed + tl.offset) / tl.period);
-  const phaseStart = k * tl.period - tl.offset;
-  const local = elapsed - phaseStart;
+  const life = SESSION_CYCLES * tl.period + FINISHED_SECONDS + LEAVING_SECONDS;
+  const t0 = elapsed + tl.offset;
+  const gen = Math.floor(t0 / life);
+  const tau = t0 - gen * life;
+  const genStart = gen * life - tl.offset;
+  const cycle = Math.floor(tau / tl.period);
+  const phaseStart = genStart + cycle * tl.period;
+  const local = tau - cycle * tl.period;
   const windows = permissionWindows(tl, phaseStart, tl.workLen);
   for (const w of windows) {
     if (local >= w.at && local < w.at + w.wait) {
@@ -372,9 +393,23 @@ function sessionState(elapsed: number, tl: Timeline): SlotState {
         toolIndex: Math.max(0, Math.floor(w.at / tl.toolEvery)),
         toolAt: phaseStart + w.at,
         waiting: true,
-        gen: 0,
+        gen,
       };
     }
+  }
+  const after = tau - SESSION_CYCLES * tl.period;
+  if (after >= 0) {
+    // The end of the session: it is done, and then it leaves.
+    const done = {
+      status: 'finished' as const,
+      phaseStart: genStart + SESSION_CYCLES * tl.period,
+      toolIndex: Math.max(0, Math.floor(tl.workLen / tl.toolEvery)),
+      toolAt: genStart + SESSION_CYCLES * tl.period,
+      waiting: false,
+      gen,
+    };
+    if (after < FINISHED_SECONDS) return done;
+    return { ...done, status: 'leaving', phaseStart: done.phaseStart + FINISHED_SECONDS };
   }
   if (local < tl.workLen) {
     const t = effectiveTime(local, windows);
@@ -384,7 +419,7 @@ function sessionState(elapsed: number, tl: Timeline): SlotState {
       toolIndex: Math.max(0, Math.floor(t / tl.toolEvery)),
       toolAt: phaseStart + t,
       waiting: false,
-      gen: 0,
+      gen,
     };
   }
   // Idle: the last thing the session did was in the working phase before.
@@ -395,7 +430,7 @@ function sessionState(elapsed: number, tl: Timeline): SlotState {
     toolIndex: Math.max(0, Math.floor(t / tl.toolEvery)),
     toolAt: phaseStart + t,
     waiting: false,
-    gen: 0,
+    gen,
   };
 }
 
@@ -580,6 +615,13 @@ export function demoAgents(n: number, nowS: number, state: DemoState): AgentView
   };
 
   // --- the agents themselves.
+  // A session that ends is replaced by the next one, so a sub-agent belongs
+  // to the session that is running now, not to the slot it was born in.
+  const sessions = new Map<string, string>();
+  for (const p of places) {
+    if (p.slot.kind !== 'session') continue;
+    sessions.set(p.slot.baseId, p.id);
+  }
   const agents: AgentView[] = places.map((p) => {
     const { slot, st } = p;
     const tool = st.toolIndex >= 0 ? toolFor(slot.baseId, st.toolIndex) : null;
@@ -592,7 +634,7 @@ export function demoAgents(n: number, nowS: number, state: DemoState): AgentView
       status: st.status,
       label: slot.label,
       session_id: slot.sessionId,
-      parent_id: slot.parentId,
+      parent_id: slot.parentId ? (sessions.get(slot.parentId) ?? slot.parentId) : null,
       tool_use_id: null,
       subagent_type: slot.subagentType,
       tool_name: tool,
