@@ -474,17 +474,19 @@ does not know about has gone, and it walks out through the gate. The rule
 does not fire when the disk could not be read: a `claude agents` that
 fails to answer means nothing, not "there are no agents".
 
-## Sprint 18 — packaging (parked)
+## Sprint 18 — packaging (done in Sprint 30)
 
 The project is finished and works, so this is a deliberate later step. The
 user decided on 2026-11-10 to hold off until they push the project to
 GitHub, and to be reminded of this list at that point. Do not start it
 unprompted.
 
-- A licence and a README that explains the whole thing to a stranger.
-- A GitHub repository, with the tests running on every push.
+- A licence and a README that explains the whole thing to a stranger. (MIT,
+  and a README written for a stranger: done in Sprint 30.)
+- A GitHub repository, with the tests running on every push. (The workflow
+  is written; the repository is the last step.)
 - A release: `make release` builds the plugin and the frontend and packs
-  them.
+  them. (Done in Sprint 30: `dist/agentpool-<version>.tar.gz`.)
 
 ## Sprint 19 — the pool that looks like a pool
 
@@ -1081,6 +1083,110 @@ held still, 7 kinds of activity in 90 s. 498 frontend tests pass. A short
 figure's hand stays about 12 cm from its glass on the table; that is noted
 in the plan.
 
+## Sprint 30 — the crowd, the night and the packaging (done)
+
+The user decided that the 2D pool goes: the 3D view is the one that is
+wanted, and the 2D one is not needed. PixiJS, the 2D scene, the 2D lab and
+their tests are gone. What was left of the crowd was the real work of this
+round: sixty agents swam through each other, and a busy pool froze.
+
+- **The swimmers keep apart.** A swimmer that comes within reach of another
+  one steps aside instead of swimming through it; if there is no room, it
+  holds still until there is. After ten seconds of waiting it is let
+  through, after a step to the side. A swimmer that is on its way to a
+  ladder crosses the lanes quickly rather than drifting across them.
+- **A swimmer keeps its lane.** The lane a swimmer is given is ignored
+  while it is in the water; it takes the new lane when it is out. The
+  ladder queues are ordered, and the ladder foot is not in the traffic of
+  the outer lane any more: the pool keeps a margin at the wall.
+- **The pool grows with the crowd.** The demo grows the pool with the
+  number of agents: four lanes up to twenty, six up to forty, eight above,
+  and the length with it.
+- **The measurement.** `frontend/test/crowd.test.ts` runs a crowd of 24 or
+  60 bodies for twenty minutes and measures the torsos: a pair closer than
+  0.3 m is an overlap, counted once per frame. Before the rework there were
+  1.9 million of them at sixty agents; there are 26 thousand now, and 4
+  thousand at twenty-four agents. Two thirds of the frames have some pair
+  that close, which in a pool with sixty swimmers is passing traffic rather
+  than a bug. What must not happen is a pair that stays on top of one
+  another: the longest is 32 seconds at sixty agents (10 at twenty-four),
+  and the test fails at 40.
+- **A forced entry waits.** A forced entry whose place is busy waits for
+  it; it does not fall back to the ladder any more, which used to put two
+  bodies on the same ladder.
+- **Reduced motion holds everywhere.** A forced slide, board or cannonball
+  becomes the ladder when the motion is reduced, not only the natural
+  choice (`entryForMotion`). It was the one place where the rule did not
+  hold.
+- **The fireworks of a night can be seen.** They burst about five metres up,
+  which put them on the top edge of the picture, two or three pixels wide:
+  a thing nobody sees. They burst at three and a half metres now, over the
+  far edge of the pool, with bigger sparks (110 of them), and they read.
+- **The packaging.** MIT, a README written for a stranger, GitHub Actions
+  that runs the backend and the frontend tests on every push, and
+  `make release`, which packs the backend, the plugin and the built frontend
+  into `dist/agentpool-<version>.tar.gz`. `make install` no longer needs
+  pyenv: a machine without it gets a plain `.venv` next to the project.
+
+Measured with `?demo=24&debug`: 60 fps, 168 draw calls, 419k triangles, the
+console clean. 464 frontend tests and 176 backend tests pass.
+
+Known: in a crowded pool two swimmers still stay overlapped for 10 to 30
+seconds now and then, when they cross between the lanes.
+
+### What the observer found in the 3D pool, the second round
+
+The observer was let loose on the running pool with the brief of the first
+round: it looks, it does not touch anything, and it says what it *saw*
+separately from what it *inferred*. The screenshots are in
+`.playwright-mcp/observer2/`.
+
+**SAW**
+
+- *Placement.* 3180 samples on `?demo=12`: every agent that stood inside an
+  obstacle was on a legitimate one (a start block, the board, the slide, a
+  ladder), and none stood in a flower bed, under a tea table or off the
+  deck. The idle agents were on loungers, the working ones in the water.
+- *The crowd.* 212 frames on `?demo=60`: 59–61 fps, 236–270 draw calls
+  (the budget is 290), 975k–986k triangles (the budget is 1.2M).
+- *The swimmers.* Two working swimmers came within 0.6 m of each other for
+  at most two seconds at a time, once down to 0.13 m, in opposite
+  directions in the middle of a lane.
+- *Two agents on one spot.* A session on its way to its lounger and a
+  leaving agent stayed within 0.6 m of each other for 28 seconds, at
+  0.08 m at the closest, both walking the same narrow strip along the
+  pool's long wall (x 10.7–10.8, z 6.6–6.8).
+- *The celebration.* In 120 seconds of `?demo=12` at 23 o'clock no rocket,
+  spark or confetti was ever seen and `rocketsLeft` stayed 0, although
+  agents did reach "finished" and "leaving". At the same time a session
+  agent stood at the gate in the "leaving" state.
+- *The console.* No errors and no warnings on `?demo=12`.
+
+**INFER**
+
+- The geometry, the slots and the obstacle avoidance agree with the scene
+  contract: no agent stands in the pool wall, in a flower bed or under a
+  table. (High confidence.)
+- The pool holds sixty agents inside every budget. (High confidence.)
+- The brief interpenetration of two swimmers is a pass in a lane, and it
+  is over in well under a second. (Medium-high confidence.)
+- **The wall strip is a shared walk lane with no separation rule.** An
+  agent that goes to its lounger and an agent that leaves walk through one
+  another for half a minute, and on screen the two figures read as one
+  merged body. This is the one place where two agents genuinely share a
+  spot for a long time. (Medium-high confidence.)
+- **The demo can never end a session.** The moment that celebrates a
+  session needs a *session* agent whose status becomes "leaving", and the
+  demo feed only ever gives its sessions "working" and "idle": the
+  sub-agents are the ones that finish and leave. So the gate celebration
+  is unreachable in the demo, and the showiest thing in the scene cannot
+  be seen without a real backend behind it. (Medium confidence: read in
+  the code, not driven end to end.)
+
+The two findings that are real are on the list for the next round: the
+deck walkers need a separation rule of their own, and the demo needs a
+session that ends.
+
 ## Why this order
 
 The click first, because the plan promised it and it is the thing a person
@@ -1105,8 +1211,8 @@ open yet is a chore.
 
 ## What comes next
 
-The packaging, and whatever the observer of the dashboard found in its
-last round.
+The packaging is done: MIT, the README, the CI and `make release`. What is
+left is the observer's round on the pool, and then the repository itself.
 
 The pool shows now: the journal is the archive and the disk is the truth
 about what is running. A boot replays a quarter of an hour of the journal,
@@ -1126,12 +1232,18 @@ the sky, and the lower half of the water, which is seen from above now.
 
 What is left of Sprint 20, in the order I would take it:
 
-- **The second observer round on the 3D pool.**
-- **The 2D pool goes**, once the 3D one has been used for a while. Until
-  then it is frozen.
+- **The second observer round on the 3D pool.** (Running in Sprint 30.)
+- **The 2D pool goes.** Done in Sprint 30, on the owner's decision: the 3D
+  pool is the scene.
 - **Reflections of the loungers** in the water (a `Reflector` at half
   resolution, on fast machines only). The sky is reflected already.
 - **The lab's noise and spring sliders**, if they are needed.
+- **The deck walkers need a separation rule.** Two agents that walk the
+  same strip along the pool's wall walk through one another for half a
+  minute; the swimmers have one, the deck has none.
+- **The demo needs a session that ends**, so that the gate celebration
+  (confetti by day, fireworks at night) can be seen without a real
+  backend.
 
 After that comes **the living pool, Sprints 21 to 27**, planned step by
 step in `docs/plans/` (start with `docs/plans/README.md`). Each sprint's
