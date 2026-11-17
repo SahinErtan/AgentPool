@@ -1,7 +1,8 @@
 {
   "name": "agentpool-local",
   "owner": {
-    "name": "AgentPool"
+    "name": "SahinErtan",
+    "url": "https://github.com/SahinErtan"
   },
   "metadata": {
     "description": "The local AgentPool marketplace"
@@ -11,7 +12,7 @@
       "name": "agentpool",
       "version": "0.1.0",
       "source": "./agentpool",
-      "description": "Your Claude Code agents swim in a pool instead of typing at a desk"
+      "description": "See every Claude Code session and subagent as a character in a 3D swimming pool"
     }
   ]
 }

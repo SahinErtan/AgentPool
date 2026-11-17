@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      # The Makefile points at a pyenv environment that only exists on the
-      # author's machine, so the dependencies are installed by hand here.
+      # The runner already has the right python, so the requirements go
+      # straight into it instead of through `make venv`.
       - name: install the backend requirements
         run: |
           python -m pip install --upgrade pip

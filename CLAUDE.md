@@ -12,8 +12,8 @@ generated from code and is a pure function of its agent id.
 
 ## Commands
 
-Everything runs through the Makefile (Python 3.11 pyenv env `agentpool-env`, backend on :38000,
-vite dev server on :5173).
+Everything runs through the Makefile (Python 3.11: the pyenv env `agentpool-env` when pyenv has
+3.11.11, otherwise a plain `venv/` in the project; backend on :38000, vite dev server on :5173).
 
 ```sh
 make install      # venv + npm install + frontend build (a fresh clone needs this before the backend serves the UI)
@@ -31,8 +31,8 @@ Single tests:
 ```sh
 cd frontend && node test/run.mjs poses    # the frontend files whose name contains "poses"
 cd frontend && npx tsc -b                 # type check
-make test-backend                         # or: $(HOME)/.pyenv/versions/3.11.11/envs/agentpool-env/bin/python -m pytest tests -q
-$(HOME)/.pyenv/versions/3.11.11/envs/agentpool-env/bin/python -m pytest tests/test_registry.py -k idle -q
+make test-backend                         # pytest in the Makefile's python environment
+<env>/bin/python -m pytest tests/test_registry.py -k idle -q   # <env> = the pyenv env or ./venv
 ```
 
 The frontend tests are TypeScript bundled by esbuild and run in plain Node (`node --test`), no
@@ -42,7 +42,7 @@ pure side decided.
 Useful URLs: `/?demo=12` (scripted fake agents, no backend), `/?demo=60&debug` (crowd test with
 fps / draw calls / triangles in the corner), `/?lab`, `/?agent=<id>`, `?debug`.
 `window.__agentpool` exposes `stats()`, `debug.list()`, `debug.play(id, action)`,
-`debug.force(id, {work})`, `debug.moment(kind, id)`, `debug.look(x, z, d)`.
+`debug.force(id, {work})`, `debug.clock(hour)`, `debug.look(x, z, d)`.
 
 ## Architecture
 
@@ -102,10 +102,8 @@ Key files: `backend/agentpool/bridge/` (normaliser, registry, reconciler, broker
 
 ## Conventions
 
-- Everything in the repository — code, comments, docs — is in **English**; the conversation with
-  the user is in Turkish.
-- **Do not commit unless the user asks.** The working tree currently holds a large uncommitted
-  change set.
+- Everything in the repository — code, comments, docs — is in **English**.
+- **Do not commit unless the user asks.**
 - `make plugin` stays separate from `make install`: installing the plugin writes to the global
   Claude configuration and is a deliberate step.
 - The house comment style explains *why* in plain sentences, no commented-out code.

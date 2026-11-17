@@ -1,16 +1,22 @@
 {
   "name": "agentpool",
   "version": "0.1.0",
-  "description": "Your Claude Code agents swim in a pool instead of typing at a desk",
+  "description": "See every Claude Code session and subagent as a character in a 3D swimming pool: working agents swim, idle agents relax on a sun-lounger.",
   "author": {
-    "name": "AgentPool"
+    "name": "SahinErtan",
+    "url": "https://github.com/SahinErtan"
   },
   "keywords": [
-    "claude",
     "claude-code",
     "plugin",
     "hooks",
     "dashboard",
-    "agents"
-  ]
+    "agents",
+    "subagents",
+    "visualization",
+    "threejs"
+  ],
+  "homepage": "https://github.com/SahinErtan/AgentPool",
+  "repository": "https://github.com/SahinErtan/AgentPool",
+  "license": "MIT"
 }

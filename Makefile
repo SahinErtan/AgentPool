@@ -27,8 +27,9 @@ help:
 	@echo "make test      - run the backend and the frontend test suites"
 	@echo "make lab       - open the animation lab (frontend/?lab)"
 	@echo "make agentpool - ask the running pool what the agents are doing"
-	@echo "make plugin     - install the Claude Code plugin from ./plugin"
-	@echo "make release    - pack the plugin and the frontend into dist/"
+	@echo "make plugin    - install the Claude Code plugin from ./plugin"
+	@echo "make plugin-uninstall - remove the Claude Code plugin again"
+	@echo "make release   - pack the plugin and the frontend into dist/"
 
 venv:
 	@if [ -n "$(HAVE_PYENV)" ]; then \
@@ -57,9 +58,13 @@ server:
 	fi
 	$(PY) backend/run.py
 
-# The backend that is holding the port, whoever started it.
+# The backend that is holding the port, whoever started it. `ss` is there on
+# Linux, `lsof` on macOS.
 server-stop:
 	@pid=$$(ss -ltnp 2>/dev/null | grep ':$(PORT) ' | grep -o 'pid=[0-9]*' | head -n1 | cut -d= -f2); \
+	if [ -z "$$pid" ] && command -v lsof >/dev/null 2>&1; then \
+		pid=$$(lsof -tiTCP:$(PORT) -sTCP:LISTEN 2>/dev/null | head -n1); \
+	fi; \
 	if [ -z "$$pid" ]; then \
 		echo "nothing is listening on :$(PORT)"; \
 		exit 0; \

@@ -1,262 +1,409 @@
-# AgentPool
+<div align="center">
 
-**Your Claude Code agents swim in a pool instead of sitting at a desk.**
+# 🏊 AgentPool
 
-The usual way to watch an agent is to see it type. AgentPool does the
-opposite: an idle agent lies on a sun-lounger with a cup of tea, and the
-moment it starts working it jumps into the pool and swims. When it is done
-it climbs out and goes back to lounging. When the session ends it walks out
-through the gate, and the next agent walks in through the same gate.
+**Watch your Claude Code agents swim.**
 
-Every Claude Code session and every subagent is a character. You see them
-all at once, see what each one is doing, and see it change the moment it
-starts and stops working.
+A live 3D dashboard for [Claude Code](https://docs.claude.com/en/docs/claude-code/overview).
+Every session and every subagent becomes a little character in a swimming pool.
+Working agents swim. Idle agents relax on a sun-lounger with a cup of tea.
 
-![the pool](docs/pool.png)
+[![CI](https://github.com/SahinErtan/AgentPool/actions/workflows/ci.yml/badge.svg)](https://github.com/SahinErtan/AgentPool/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)
+![Python 3.11](https://img.shields.io/badge/python-3.11-3776ab)
+![Node 20+](https://img.shields.io/badge/node-20%2B-5fa04e)
+![Three.js](https://img.shields.io/badge/three.js-WebGL2-000000)
 
-The picture above is the whole idea: a sunlit swimming pool, a row of
-loungers along the deck, agents in the water and agents on the deck. The
-light follows the clock, the lamps come on when the sun goes down, and
-sometimes it rains.
+<img src="docs/media/hero.gif" alt="Twelve agents in the pool: some swim in the lanes, some lie on the loungers" width="800">
 
-There are no picture assets in this repository. Every character, the pool
-and the deck are drawn from code at run time, and every character is
-different — a character is a pure function of its agent id.
+[Quick start](#-quick-start) ·
+[Try the demo](#-try-it-without-claude-code) ·
+[Configuration](#%EF%B8%8F-configuration) ·
+[How it works](#-how-it-works) ·
+[Video tour](docs/media/tour.mp4)
 
-## Requirements
+</div>
 
-- Python 3.11
-- Node.js 20 (or newer)
-- A browser with WebGL2 (any current Chrome, Firefox, Safari or Edge)
+---
 
-Everything runs on your own machine. Nothing is sent anywhere.
+## ✨ What is this?
 
-`make install` makes the Python environment for you. If [pyenv](https://github.com/pyenv/pyenv)
-with Python 3.11 is on the machine it uses that; otherwise it makes a plain
-`.venv` next to the project. Neither pyenv nor a virtualenv of your own is
-needed.
+When you run many Claude Code sessions and subagents at once, it is hard to
+know who is busy, who is waiting for you and who is done. AgentPool shows
+all of them in one picture, and the picture changes the moment an agent
+starts or stops working.
 
-## Install
+| When the agent is… | the character… |
+|---|---|
+| 🏊 **working** | jumps into the pool and swims |
+| ☕ **idle** | lies on a sun-lounger with tea, a book or a newspaper |
+| ✋ **waiting for you** | puts a hand up |
+| ✅ **finished** | climbs out of the pool, and the others wave |
+| 🚪 **closed** | walks out through the gate |
+
+**The swimming stroke tells you the tool.** An agent running a shell command
+sprints, an agent editing a file swims butterfly, an agent reading or
+searching wears a snorkel and dives, and an agent on the web does
+backstroke.
+
+A few more things you get:
+
+- 🎨 **Every character is unique** and always looks the same for the same
+  agent. There are no image files in this project: the characters, the pool
+  and the deck are all drawn by code.
+- 🌤️ **The pool follows the clock.** Sunlight in the day, lamps at night,
+  and sometimes it rains.
+- 🔍 **Click any character** (or a row in the list) to see its folder, its
+  prompt, its current tool and how long it has been running.
+- 🔒 **Everything stays on your computer.** The backend listens on
+  `127.0.0.1` only. Nothing is sent to the internet.
+
+<table>
+  <tr>
+    <td><img src="docs/media/swim.gif" alt="A close look at the swimmers"></td>
+    <td><img src="docs/media/dashboard.jpg" alt="The dashboard with the agent inspector open"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Each tool has its own swimming stroke</sub></td>
+    <td align="center"><sub>Click an agent to see its details</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/night.jpg" alt="The pool at night, with the lamps on"></td>
+    <td><img src="docs/media/rain.jpg" alt="The pool in the rain"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>At night the lamps come on</sub></td>
+    <td align="center"><sub>Sometimes it rains</sub></td>
+  </tr>
+</table>
+
+🎬 **Video tour:** [docs/media/tour.mp4](docs/media/tour.mp4) (about 30 seconds).
+
+---
+
+## 🚀 Quick start
+
+### 1. Check the requirements
+
+| You need | Why |
+|---|---|
+| **Linux or macOS** | The plugin hooks are small bash scripts. (Windows is not tested; WSL may work.) |
+| **Python 3.11** | Runs the backend. `make install` needs a `python3.11` command, or [pyenv](https://github.com/pyenv/pyenv) with 3.11.11. |
+| **Node.js 20 or newer** | Builds the web page. |
+| **`make`, `curl`, `bash`** | Used by the install steps and the hooks. |
+| **[Claude Code](https://docs.claude.com/en/docs/claude-code/overview)** | The `claude` command. Only needed for the plugin step. |
+| **A browser with WebGL2** | Any current Chrome, Firefox, Safari or Edge. |
+
+### 2. Install
 
 ```sh
+git clone https://github.com/SahinErtan/AgentPool.git
+cd AgentPool
 make install
 ```
 
-That creates the Python environment, installs the backend requirements,
-installs the frontend dependencies and builds the frontend into
-`frontend/dist`. A fresh clone needs it once, before the backend can serve
-the dashboard.
+`make install` does three things:
 
-Then, in a second terminal:
+1. creates a Python environment (pyenv if you have it, otherwise a `venv/`
+   folder inside the project),
+2. installs the backend and frontend dependencies,
+3. builds the web page into `frontend/dist`.
 
-```sh
-make server
-```
+It does **not** change anything outside the project folder.
 
-The dashboard comes up on <http://127.0.0.1:38000>.
-
-### The plugin
+### 3. Connect it to Claude Code
 
 ```sh
 make plugin
 ```
 
-`make plugin` installs the Claude Code plugin from the local marketplace in
-`plugin/`, so the plugin always matches the code in this working copy. It is
-a **separate step on purpose**: it writes to your global Claude Code
-configuration, and that is a deliberate thing to do.
+This installs the AgentPool plugin into Claude Code. It is a separate step
+because it changes your global Claude Code settings. After this:
 
-The plugin registers the Claude Code hooks. `SessionStart` starts the
-backend if it is not listening yet; every other event is posted to the
-backend over HTTP. From then on the pool fills up by itself: start a
-Claude Code session, and its character appears.
+- every time a Claude Code session starts, the plugin starts the AgentPool
+  backend (if it is not already running), and
+- every hook event (prompt, tool use, subagent start and stop, …) is sent to
+  the backend on your own computer.
 
-`make plugin-uninstall` takes it away again.
+> **Keep the project folder where it is.** `make plugin` remembers its path
+> in `~/.config/agentpool/root`, so the plugin can start the backend from
+> there. If you move the folder, run `make plugin` again.
 
-## Useful URLs
+### 4. Open the pool
 
-The backend serves the built frontend, so every URL below works on
-<http://127.0.0.1:38000>. During development the vite dev server on
-:5173 serves the same page with hot reload.
+Start any Claude Code session, then open:
 
-| URL | What it does |
+**👉 <http://127.0.0.1:38000>**
+
+Your session appears as a character. Give it a task and watch it jump into
+the water. When it starts a subagent, a new character walks in through the
+gate.
+
+> You can also start the backend yourself with `make server`, for example
+> before you start Claude Code. Stop it with `make server-stop`.
+
+---
+
+## 🎮 Try it without Claude Code
+
+You do not need Claude Code to look around. The demo mode plays twelve
+scripted agents in the browser:
+
+```sh
+make install
+make server
+```
+
+Then open <http://127.0.0.1:38000/?demo=12>.
+
+---
+
+## 🧭 Using it
+
+### The dashboard
+
+- **The pool** (left) shows every agent. Drag to turn the camera, scroll to
+  zoom. Click a character to select it.
+- **The list** (right) shows the same agents as text, with a filter
+  (*Working*, *Idle*, *Done*, and by kind). The small bar under each row shows
+  when that agent was busy in the last 15 minutes.
+- **The inspector** opens when you select an agent: its folder, its prompt,
+  its current tool, its parent session and its timing.
+- **Activity** shows the latest events and the health of the backend.
+- **Legend** explains the marks, the strokes and the keys.
+
+**Keys:** ↑ / ↓ move through the list · Enter opens the inspector · Esc
+closes it · **T** starts a camera tour · **F** follows the selected agent.
+
+### Useful addresses
+
+| Address | What it shows |
 |---|---|
-| `/` | The pool, with your own agents. |
-| `/?demo=12` | Twelve scripted agents and no backend — for looking at the scene on its own. |
-| `/?demo=60&debug` | A crowd of sixty, with the fps, the draw calls and the triangle count in the corner. |
-| `/?lab` | The animation lab: every swim style and every idle activity, side by side. |
-| `?debug` | The debug hooks, listed at the bottom of this file. |
-| `?agent=<id>` | Opens with that agent selected. |
+| `/` | The pool with your real agents |
+| `/?demo=12` | Twelve fake agents, no backend data needed |
+| `/?demo=60&debug` | A crowd of 60, with fps and render stats in the corner |
+| `/?lab` | The animation lab: every swim style and every idle activity |
+| `/?agent=<id>` | Opens with that agent already selected |
 
-## The commands
+### From the terminal
 
-```sh
-make install     # the python environment, the frontend dependencies and the build
-make server      # the backend on :38000, with the built frontend
-make server-stop # stop the backend that is holding :38000
-make frontend    # the vite dev server on :5173, with hot reload
-make build       # build the frontend into frontend/dist
-make test        # the backend and the frontend test suites
-make lab         # the animation lab
-make agentpool   # ask the running pool what the agents are doing
-make plugin      # install the Claude Code plugin from ./plugin
-make release     # build the plugin and the frontend and pack them into dist/
-```
-
-`make agentpool` asks the pool the same question the dashboard answers, and
-it is meant to be used from a script:
+Ask the running pool what your agents are doing:
 
 ```sh
-make agentpool ARGS="--json"
-make agentpool ARGS="--watch"
-make agentpool ARGS="--agent session:abc"
+make agentpool                         # a short table
+make agentpool ARGS="--watch"          # keeps updating
+make agentpool ARGS="--json"           # for scripts
+make agentpool ARGS="--agent <id>"     # one agent in detail
 ```
 
-The exit code says what happened: 0 when the pool answered, 1 when the
-backend could not be reached, 3 when the agent that was asked for is not
-there.
+Exit codes: `0` the pool answered · `1` the backend is not running · `3`
+the agent you asked for is not there.
 
-Inside Claude Code, `/agentpool` asks the same question and reports it
-back.
+### From inside Claude Code
 
-## What it shows
+Type **`/agentpool`** in a session. Claude reads the pool and tells you who
+is working, what they are doing and if anything looks stuck.
 
-- Every Claude Code session and every subagent, as a character.
-- The state of each one: idle, working, done, on its way out.
-- The details of an agent when you click it: the folder it works in, the
-  prompt it got, how long it has been running. A character in the pool can
-  be clicked as well as a row in the list.
-- A summary of the pool: how many are working, how many are idle, how many
-  finished in the last five minutes.
-- A filter for the list, and a bar under every agent that shows when it was
-  working in the last fifteen minutes.
-- The pool itself: the agents swim, they lie on the loungers with a cup of
-  tea or a newspaper, and when one of them finishes the others wave. The
-  camera looks at the agent you pick.
-- The keyboard: the arrow keys walk the list, Enter opens the inspector,
-  Escape closes it. The canvas is labelled, the list is the same
-  information in text.
-- An activity section: the last things that happened in the pool, and the
-  health of the backend — the deliveries, the refusals, the dropped
-  messages and the last error.
+---
 
-## Tests
+## ⚙️ Configuration
 
-```sh
-make test           # both suites
-make test-backend   # pytest, in the python environment
-make test-frontend  # node --test, in the frontend
-```
+AgentPool works without any configuration. If you want to change something,
+set one of these environment variables.
 
-The frontend tests are written in TypeScript and run in plain Node — no
-browser, no WebGL. The character system has its own invariants: a
-character is a pure function of its id, the animation does not depend on
-the frame rate, the pose layers never fight each other, and the pose is
-never a `NaN`.
-
-The same suites run on every push, on GitHub Actions
-(`.github/workflows/ci.yml`).
-
-## How it works
-
-```
-Claude Code ──hook──▶ the bridge ──▶ the registry ──▶ the scene ──▶ WebSocket ──▶ the browser
-```
-
-1. **The hook.** The plugin registers the Claude Code hooks and posts the
-   events to the backend over HTTP.
-2. **The bridge** (`backend/agentpool/bridge/`) turns the raw hook payloads
-   into events. It is deliberately dull: it knows about agents, never about
-   scenes.
-3. **The registry** owns the agents: who exists, what state they are in,
-   when they are dropped.
-4. **The scene** decides where an agent belongs: a lane to swim in, a
-   lounger to lie on. The pool is one scene; `docs/scenes.md` explains how
-   to write another one.
-5. **The browser** draws the pool with Three.js (WebGL2). The React layer
-   only draws the panels; the 60 fps path never touches React.
-
-Three rules hold the project together:
-
-- **The backend owns the placement.** Two open browser tabs have to agree on
-  who is in which lane, so the world model (slots, lanes, queues) lives on
-  the server and the frontend owns the pixels.
-- **The scene is 3D only.** The old 2D pool is gone. The scene is Three.js.
-- **No picture assets.** Every character is generated from code, and a
-  character is a pure function of its agent id.
-
-The decisions live in *pure* modules with no Three.js objects in them
-(`world.ts`, `nav.ts`, `flow.ts`, `swim.ts`, `work.ts`, …). The rules are
-decided there and the 3D side only draws what they decided, which is why
-they can be tested without a browser.
-
-## The repository
-
-```
-backend/agentpool/    the backend: the bridge, the registry, the scene, the API
-frontend/src/scene/   the 3D scene (pool3d), the characters and the motion
-plugin/               the Claude Code plugin: the hooks and the /agentpool command
-tests/                the backend tests
-docs/                 the documentation
-```
-
-## The documentation
-
-The README is the front door; `docs/` has the depth.
-
-- [the architecture](docs/architecture.md) — the seam, the identity, the pose model
-- [the scenes](docs/scenes.md) — the scene contract, and how to write another scene
-- [the lifecycle of an agent](docs/lifecycle.md) — the states, the sweeper, the reconciler
-- [the hook events](docs/hook-events.md) — what the plugin sends
-- [porting the bridge](docs/porting.md) — how another project reuses the half that is not the pool
-- [the sprint plan](docs/next.md) — what is done and what comes next
-
-## Configuration
-
-| Variable | Default | What it does |
+| Variable | Default | What it changes |
 |---|---|---|
-| `AGENTPOOL_PORT` | `38000` | The port the backend listens on. |
-| `AGENTPOOL_IDLE_TTL_S` | `90` | How long an idle agent is kept. |
-| `AGENTPOOL_SESSION_TTL_S` | `900` | How long a silent session is kept. |
-| `AGENTPOOL_EXIT_GRACE_S` | `30` | How long a closing agent may take to walk out. |
-| `AGENTPOOL_CLAUDE_DIR` | `~/.claude` | Where the reconciler looks for sessions. |
-| `AGENTPOOL_TOKEN` | *(none)* | A shared token the local port asks for. |
-| `AGENTPOOL_NOTIFY` | `1` | Tell the desktop when a long agent is done. |
-| `AGENTPOOL_JOURNAL` | `1` | Write the events to the journal. |
-| `AGENTPOOL_JOURNAL_KEEP_DAYS` | `7` | How long the journal is kept. |
+| `AGENTPOOL_PORT` | `38000` | The port of the backend. See the note below. |
+| `AGENTPOOL_HOST` | `127.0.0.1` | The address the backend listens on. |
+| `AGENTPOOL_TOKEN` | *(empty)* | A password for the dashboard and the API. See [Security](#-privacy-and-security). |
+| `AGENTPOOL_IDLE_TTL_S` | `90` | Seconds an idle agent stays in the pool. |
+| `AGENTPOOL_SESSION_TTL_S` | `900` | Seconds a silent session stays before it is removed. |
+| `AGENTPOOL_EXIT_GRACE_S` | `15` | Seconds a closing agent gets to walk out of the gate. |
+| `AGENTPOOL_NOTIFY` | `1` | Desktop notification when an agent that worked for 30 s or more finishes. `0` turns it off. |
+| `AGENTPOOL_JOURNAL` | `1` | Write every event to the journal on disk. `0` turns it off. |
+| `AGENTPOOL_JOURNAL_KEEP_DAYS` | `7` | Days the journal is kept. |
+| `AGENTPOOL_JOURNAL_REPLAY_WINDOW_S` | `900` | At start, events from this many seconds back are put back into the pool. |
+| `AGENTPOOL_CLAUDE_DIR` | `~/.claude` | Where Claude Code keeps its session files. |
+| `AGENTPOOL_STATE_DIR` | `~/.local/state/agentpool` | Where the journal, the log and the pid file go. |
+| `AGENTPOOL_ROOT` | *(from `make plugin`)* | The project folder the plugin starts the backend from. |
+| `AGENTPOOL_PYTHON` | *(auto)* | The Python the plugin uses to start the backend. |
 
-## The backend API
+**How to set them**
 
-| Address | What it says |
+- If you start the backend yourself, set them in the same terminal:
+
+  ```sh
+  AGENTPOOL_NOTIFY=0 AGENTPOOL_IDLE_TTL_S=300 make server
+  ```
+
+- If the plugin starts the backend, it uses the environment of your Claude
+  Code session. Put the variables in your shell profile (`~/.bashrc`,
+  `~/.zshrc`), or in the `env` block of `~/.claude/settings.json`:
+
+  ```json
+  {
+    "env": {
+      "AGENTPOOL_NOTIFY": "0"
+    }
+  }
+  ```
+
+  The backend reads the variables only when it starts, so restart it after a
+  change: `make server-stop`, then open a new Claude Code session (or run
+  `make server`).
+
+> **About the port:** the plugin's hooks send their events to
+> `http://127.0.0.1:38000`, and this address is fixed in
+> `plugin/agentpool/hooks/hooks.json`. If you change `AGENTPOOL_PORT`, change
+> the port in that file too, then run `make plugin` again.
+
+---
+
+## 🔒 Privacy and security
+
+- The backend listens on **`127.0.0.1` only**, so other computers cannot
+  reach it. Nothing is sent to the internet.
+- Requests from web pages on other sites are refused, so a random page in
+  your browser cannot add fake agents to the pool.
+- The journal (`~/.local/state/agentpool/events/`) keeps the hook events for
+  7 days. **These include your prompts and the folders you work in.** Turn it
+  off with `AGENTPOOL_JOURNAL=0`, or delete the folder at any time.
+- Want a password? Set `AGENTPOOL_TOKEN=some-secret`. Then open the dashboard
+  as `http://127.0.0.1:38000/?token=some-secret`. The `make agentpool` command
+  reads the same variable. (The `/agentpool` slash command does not send a
+  token.)
+- If you set `AGENTPOOL_HOST` to something other than `127.0.0.1`, the
+  dashboard can be seen from your network. Always set a token in that case.
+
+---
+
+## 🛠️ Troubleshooting
+
+| Problem | What to try |
 |---|---|
-| `/api/health` | Whether it is alive, and how long it has been up. |
-| `/api/state` | The whole pool: every agent, its counts and the scene. |
-| `/api/agents` | The agents, without the scene. |
-| `/api/agents/<id>` | One agent, with its last events. |
-| `/api/history` | The journal, read back: the most recent events. |
-| `/api/metrics` | What the backend has done: the counters, the drops, the last error. |
+| The page does not open | Is the backend running? `curl http://127.0.0.1:38000/api/health`. If not, run `make server` and read the error. |
+| The pool is empty | Check the plugin is installed: `claude plugin list` should show `agentpool`. Then start a **new** Claude Code session. |
+| The backend does not start by itself | Read the log: `~/.local/state/agentpool/server.log`. Run `make plugin` again if you moved the project folder. |
+| "AgentPool is already running" | The plugin already started it. Just open the page, or stop it with `make server-stop`. |
+| The page says `{"detail":"Not Found"}` | The web page is not built yet. Run `make build` (or `make install`), then restart the backend. |
+| A black or empty scene | Your browser needs WebGL2. Check `chrome://gpu` or try another browser. |
 
-## The debug hooks
+---
 
-The page keeps the 3D scene in `window.__agentpool`. `stats()` is always
-there. `debug` is set only with `?debug` or `?demo`:
+## 🗑️ Uninstall
+
+```sh
+make server-stop
+make plugin-uninstall
+rm -rf ~/.config/agentpool ~/.local/state/agentpool
+```
+
+Then delete the project folder.
+
+---
+
+## 🧠 How it works
+
+```
+Claude Code ──hook──▶ bridge ──▶ registry ──▶ scene ──▶ WebSocket ──▶ browser (Three.js)
+```
+
+1. **The plugin** registers Claude Code hooks. Each hook posts its event as
+   JSON to the backend.
+2. **The bridge** (`backend/agentpool/bridge/`) turns raw hook events into
+   agent events. It knows about agents, never about pools.
+3. **The registry** keeps the list of agents and their state. Every 30
+   seconds it also checks `~/.claude` in case a hook was missed.
+4. **The scene** (`backend/agentpool/scenes/`) decides where each agent
+   belongs: a lane to swim in, a lounger to lie on. It lives on the server,
+   so two browser tabs always show the same thing.
+5. **The browser** draws the pool with Three.js (WebGL2). React only draws
+   the side panels.
+
+The bridge does not depend on the pool, so you can build a different scene
+(an office, a stadium) on top of it. See [docs/scenes.md](docs/scenes.md) and
+[docs/porting.md](docs/porting.md).
+
+### The backend API
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/health` | Is it alive, and for how long |
+| `GET /api/state` | The whole pool: every agent, the counts and the scene |
+| `GET /api/agents` | The agents, without the scene |
+| `GET /api/agents/<id>` | One agent, with its last events |
+| `GET /api/history` | The most recent events from the journal |
+| `GET /api/metrics` | Counters: events received, refused, dropped, last error |
+| `WS /ws` | Live updates for the dashboard |
+| `POST /hooks/<Event>` | Where the plugin sends the Claude Code hook events |
+
+---
+
+## 👩‍💻 Development
+
+```sh
+make server      # backend on :38000
+make frontend    # vite dev server on :5173 with hot reload (talks to the backend on :38000)
+make test        # backend (pytest) and frontend (node --test) tests
+make build       # type check and build the frontend
+make release     # pack everything into dist/agentpool-<version>.tar.gz
+```
+
+The frontend tests are TypeScript and run in plain Node, with no browser and
+no WebGL. All decisions (where an agent goes, what it does, when) live in
+small pure modules that can be tested on their own; the Three.js code only
+draws what they decided.
+
+<details>
+<summary><b>Debug hooks in the browser console</b></summary>
+
+With `?debug` or `?demo` in the address, the page exposes a few helpers:
 
 ```js
 const s = window.__agentpool;
 s.stats();                               // { fps, calls, triangles, agents, props }
-s.debug.list();                          // id, state, x, z, action, work, errand, activity, lounger, ...
+s.debug.list();                          // every character: id, state, position, action, ...
 s.debug.play(id, 'cheer');               // play an action once
-s.debug.force(id, { work: 'edit' });     // the tool it works with; null clears
+s.debug.force(id, { work: 'edit' });     // pretend the agent uses this kind of tool; null clears
 s.debug.force(id, { errand: 'towel' });  // start an errand now
-s.debug.force(id, { x, z, yaw });        // move a figure
 s.debug.force('weather', 'rain');        // 'clear' | 'cloudy' | 'rain'
-s.debug.clock(14);                       // the hour of the day
+s.debug.clock(14);                       // show the pool at this hour; null for the real clock
 s.debug.creature('duck');                // 'duck' | 'birds'
 s.debug.look(x, z, 8);                   // point the camera at a spot
 ```
 
-The full list is in `docs/next.md`.
+</details>
 
-## Licence
+### Repository layout
 
-MIT — see [LICENSE](LICENSE).
+```
+backend/agentpool/   the backend: bridge, registry, scene, API, CLI
+frontend/src/        the web page: the 3D scene, the characters, the panels
+plugin/              the Claude Code plugin: hooks and the /agentpool command
+tests/               backend tests
+frontend/test/       frontend tests
+docs/                documentation and media
+```
+
+### More documentation
+
+- [Architecture](docs/architecture.md) — the main seam, character identity, the pose model
+- [Scenes](docs/scenes.md) — the scene contract, and how to write a new scene
+- [Agent lifecycle](docs/lifecycle.md) — the states, the sweeper, the reconciler
+- [Hook events](docs/hook-events.md) — what the plugin sends
+- [Porting](docs/porting.md) — how to reuse the bridge in another project
+- [Roadmap](docs/next.md) and [sprint plans](docs/plans/) — the development history and what comes next
+
+---
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome. Please run `make test` before you open
+a pull request. The CI runs the same tests on every push.
+
+## 📄 License
+
+[MIT](LICENSE) © Sahin Ertan
+
+<sub>AgentPool is a community project and is not affiliated with Anthropic.</sub>

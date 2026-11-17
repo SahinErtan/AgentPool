@@ -39,16 +39,23 @@ project_root() {
   return 1
 }
 
+# The python that has the backend requirements. `make install` makes either
+# a pyenv environment or a plain venv inside the project, so both are tried
+# before the python on the PATH, which usually lacks FastAPI.
 python_for() {
+  local root="$1" candidate
   if [ -n "${AGENTPOOL_PYTHON:-}" ] && [ -x "${AGENTPOOL_PYTHON}" ]; then
     printf '%s' "${AGENTPOOL_PYTHON}"
     return 0
   fi
-  local candidate="$HOME/.pyenv/versions/3.11.11/envs/agentpool-env/bin/python"
-  if [ -x "${candidate}" ]; then
-    printf '%s' "${candidate}"
-    return 0
-  fi
+  for candidate in \
+    "$HOME/.pyenv/versions/3.11.11/envs/agentpool-env/bin/python" \
+    "${root}/venv/bin/python"; do
+    if [ -x "${candidate}" ]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
   command -v python3 2>/dev/null
 }
 
@@ -56,7 +63,7 @@ start_server() {
   local root python
   root="$(project_root)" || return 1
   [ -f "${root}/backend/run.py" ] || return 1
-  python="$(python_for)" || return 1
+  python="$(python_for "${root}")" || return 1
   [ -n "${python}" ] || return 1
 
   mkdir -p "${STATE_DIR}"
