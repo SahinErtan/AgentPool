@@ -1,10 +1,10 @@
 /**
  * Swimming lengths.
  *
- * The 2D swimmer swam to the end of its lane and appeared again at the other
- * end. In 3D the pool is seen from above, and a swimmer that vanishes at
- * the wall is a glitch anybody would see. A swimmer here turns at the wall:
- * it slows down, turns round and pushes off the other way.
+ * A swimmer that reached the end of its lane and appeared again at the other
+ * end would be a glitch, and the pool is seen from above, so anybody would
+ * see it. A swimmer here turns at the wall: it slows down, turns round and
+ * pushes off the other way.
  *
  * Some turns are flip turns, which the scene draws as a roll; some lengths
  * end in a rest at the wall; and two swimmers in neighbouring lanes may race.
@@ -120,6 +120,9 @@ function turnKindFor(state: SwimState, options: SwimOptions): TurnKind {
  * @param options What else the swimmer is asked to do: stop at the wall,
  *   or stay where it is. With neither, it swims on.
  */
+/** The distance across the lane from which a swimmer crosses in a hurry. */
+const CROSS_DRIFT_M = 0.9;
+
 export function swimStep(
   state: SwimState,
   world: World,
@@ -192,9 +195,13 @@ export function swimStep(
     }
   }
 
-  // The drift across the lane.
+  // The drift across the lane. A swimmer that has to cross more than half a
+  // lane — one that comes off a ladder in another lane, or one whose lane the
+  // backend has changed — crosses it in a hurry: it is in the traffic of the
+  // lanes it passes, and the sooner it is through, the better.
   const dz = laneZ - state.z;
-  const drift = Math.min(Math.abs(dz), 0.45 * dt);
+  const across = Math.abs(dz) > CROSS_DRIFT_M ? 1.5 : 0.45;
+  const drift = Math.min(Math.abs(dz), across * dt);
   state.z += Math.sign(dz) * drift;
   state.x = Math.max(world.pool.minX + 0.2, Math.min(world.pool.maxX - 0.2, state.x));
 }

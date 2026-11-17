@@ -243,9 +243,9 @@ test('the card line says what a napper does, and what the rest do', () => {
   assert.equal(restingLine(null, 900), 'lounging');
 });
 
-test('a 3D driver with the scene in charge does not start an activity on its own', () => {
+test('a driver with the scene in charge does not start an activity on its own', () => {
   const spec = specFor('driver-scene', 'subagent', { idleActivity: 'tea', idleStartDelay: 1, idleDuration: 5, idleCooldown: 1 });
-  const driver = new PoseDriver(spec, { leisure: '3d', sceneIdle: true });
+  const driver = new PoseDriver(spec, { sceneIdle: true });
   driver.setState('lounging');
   for (let i = 0; i < 600; i += 1) driver.update(100);
   assert.equal(driver.isDoingActivity, false, 'the scene decides, not the driver');
@@ -255,8 +255,8 @@ test('a 3D driver with the scene in charge does not start an activity on its own
   assert.equal(driver.isDoingActivity, false, 'the activity the scene asked for ends on its own');
 });
 
-test('the 2D driver still starts its own activity', () => {
-  const spec = specFor('driver-2d', 'subagent', { idleActivity: 'tea', idleStartDelay: 1, idleDuration: 5, idleCooldown: 1 });
+test('a driver with no scene in charge starts its own activity', () => {
+  const spec = specFor('driver-timer', 'subagent', { idleActivity: 'tea', idleStartDelay: 1, idleDuration: 5, idleCooldown: 1 });
   const driver = new PoseDriver(spec);
   driver.setState('lounging');
   let started = false;

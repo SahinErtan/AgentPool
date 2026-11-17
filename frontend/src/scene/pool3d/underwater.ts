@@ -1,9 +1,8 @@
 /**
  * What is under the water looks like it is under the water.
  *
- * The 2D scene cut every swimmer at the waterline with two masks and drew it
- * twice. In 3D the water is a surface and a fragment below it is simply
- * tinted with the colour of the water, deeper is bluer. One patch, applied
+ * The water is a surface, and a fragment below it is simply tinted with the
+ * colour of the water, deeper is bluer. One patch, applied
  * to every material that can go into the pool.
  */
 

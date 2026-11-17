@@ -35,6 +35,7 @@ import {
   type Curve,
 } from 'three';
 import { fbm } from '../characters/noise';
+import { gustScale } from './creatures';
 import { merge, put, troughGeometry, type Piece } from './build';
 import type { Particles } from './effects3d';
 import type { Water } from './water';
@@ -95,6 +96,19 @@ const DROP_ANGLE = (50 * Math.PI) / 180;
 /** The fountains run for this long, out of every this many seconds. */
 const FOUNTAIN_PERIOD = 120;
 const FOUNTAIN_ON = 40;
+
+/**
+ * Whether the fountains run at `time`: never while the pool is calm, for the
+ * forty seconds after a start, and for the first forty of every hundred and twenty.
+ */
+export function fountainsOn(time: number, calm: boolean, forcedUntil: number): boolean {
+  return !calm && (time < forcedUntil || time % FOUNTAIN_PERIOD < FOUNTAIN_ON);
+}
+
+/** The tilt of one backstroke flag at `time`: its own noise, bigger in a stronger wind. */
+export function flagTilt(time: number, index: number): number {
+  return 0.15 * fbm(time * 0.6, 1200 + index) * gustScale(time);
+}
 const GRAVITY = 9.8;
 
 // --- the shaders -----------------------------------------------------------
@@ -538,7 +552,7 @@ export function buildEquipment(world: World, particles: Particles, water: Water)
       }
 
       // The fountains run for forty seconds out of every hundred and twenty.
-      const running = !calmed && (time < forcedUntil || time % FOUNTAIN_PERIOD < FOUNTAIN_ON);
+      const running = fountainsOn(time, calmed, forcedUntil);
       rippleClock += dt;
       for (const nozzle of nozzles) {
         if (!running) {
@@ -560,11 +574,11 @@ export function buildEquipment(world: World, particles: Particles, water: Water)
         }
       }
 
-      // The backstroke flags sway in the breeze, each on its own noise.
+      // The backstroke flags sway in the breeze, each on its own noise, and flutter more in a stronger wind.
       for (let i = 0; i < flagSpots.length; i += 1) {
         const spot = flagSpots[i];
         dummy.position.set(spot.x, 1.8, spot.z);
-        dummy.rotation.set(0.15 * fbm(time * 0.6, 1200 + i), 0, 0);
+        dummy.rotation.set(flagTilt(time, i), 0, 0);
         dummy.updateMatrix();
         tmpMatrix.copy(dummy.matrix);
         pennants.setMatrixAt(i, tmpMatrix);

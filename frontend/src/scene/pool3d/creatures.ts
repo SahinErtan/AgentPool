@@ -115,6 +115,15 @@ export function windAt(time: number): number {
   return 0.5 + 0.5 * fbm(time / 90, 777);
 }
 
+/**
+ * How much the light things move in the wind: 1 at a calm (the motion as it
+ * was before the wind), up to 2 in the strongest wind. The flags and the duck's
+ * drift use it; it is the same wind value the parasols and the clouds use.
+ */
+export function gustScale(time: number): number {
+  return 1 + windAt(time);
+}
+
 /** Seconds until the next whole hour, at least a minute, at most an hour. */
 function secondsToNextHour(hour: number): number {
   const left = (Math.floor(hour) + 1 - hour) * 3600;
@@ -799,7 +808,8 @@ export class CreatureDirector {
         const dx = this.duckTarget.x - d.x;
         const dz = this.duckTarget.z - d.z;
         const len = Math.hypot(dx, dz);
-        const step = Math.min(DUCK_SPEED * dt, len);
+        // The duck drifts faster in a stronger wind, and as it did in a calm.
+        const step = Math.min(DUCK_SPEED * gustScale(now) * dt, len);
         if (len > 1e-6) {
           d.x += (dx / len) * step;
           d.z += (dz / len) * step;

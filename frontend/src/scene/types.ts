@@ -1,8 +1,8 @@
 /**
- * What the page needs from a pool scene, whichever one it is.
+ * What the page needs from the pool scene.
  *
- * The 2D scene (PixiJS) and the 3D one (Three.js) both take the agents from
- * the store, follow the size of their box and clean up after themselves.
+ * The pool (Three.js) takes the agents from the store, follows the size of
+ * its box and cleans up after itself.
  * Nothing else crosses: the hover and the selection go through the store.
  */
 

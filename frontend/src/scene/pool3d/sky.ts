@@ -28,7 +28,7 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { Palette } from '../pool/daylight';
+import type { Palette } from './daylight';
 import { windAt } from './creatures';
 import { piecesMaterial } from './build';
 import type { World } from './world';

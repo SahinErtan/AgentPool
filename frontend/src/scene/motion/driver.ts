@@ -1,10 +1,9 @@
 /**
  * The pose driver: what a character is doing, turned into a pose.
  *
- * It is the half of the animator that knows nothing about drawing. It
- * blends the pose layers, runs the springs and the noise, keeps the
- * character's own clock and decides when the idle activity starts. The 2D
- * rig and the 3D rig each write its pose in their own way.
+ * It knows nothing about drawing. It blends the pose layers, runs the springs
+ * and the noise, keeps the character's own clock and decides when the idle
+ * activity starts. The rig writes its pose onto the figure in its own way.
  *
  * The weights are damped; the layer oscillations are not. That keeps the
  * strokes crisp while still cross-fading smoothly, and it makes interruption
@@ -15,9 +14,8 @@
 import { damp } from '../characters/math';
 import { channelSeed, fbm } from '../characters/noise';
 import { dampingFor, spring, springStep, type SpringState } from '../characters/spring';
-import type { CharacterSpec, IdleActivity, SwimStyle } from '../characters/spec';
+import type { CharacterSpec, SwimStyle } from '../characters/spec';
 import {
-  activityPose,
   addPose,
   blendPose,
   climbPose,
@@ -74,6 +72,8 @@ export type PropKind =
   | 'paddle'
   | 'paddleDark'
   | 'towel'
+  // The towel shaken out, between both hands (the towel errand's shake).
+  | 'towelSpread'
   // The lounger's props of Sprint 29. The headphones are worn, not held.
   | 'laptop'
   | 'headphones'
@@ -84,7 +84,11 @@ export type PropKind =
 /** How far a head may turn to look at a place, in radians either way. */
 const LOOK_YAW_MAX = 1.2;
 
-const PROP_FOR: Partial<Record<IdleActivity, PropKind>> = {
+/**
+ * The prop each idle activity is held with: the seven activities of the
+ * lounger (Sprint 29.3) and the original five.
+ */
+const PROP_FOR: Partial<Record<LeisureDrawKind, PropKind>> = {
   tea: 'cup',
   book: 'book',
   phone: 'phone',
@@ -92,14 +96,6 @@ const PROP_FOR: Partial<Record<IdleActivity, PropKind>> = {
   snack: 'snack',
   newspaper: 'newspaper',
   cards: 'cards',
-};
-
-/**
- * The props of the 3D lounger (Sprint 29.3): the 2D table, and the seven new
- * activities. The 2D driver never reads it, so the 2D pool keeps its props.
- */
-const PROP_FOR_3D: Partial<Record<LeisureDrawKind, PropKind>> = {
-  ...PROP_FOR,
   lemonade: 'glass',
   laptop: 'laptop',
   music: 'headphones',
@@ -107,17 +103,7 @@ const PROP_FOR_3D: Partial<Record<LeisureDrawKind, PropKind>> = {
   crossword: 'crossword',
 };
 
-/**
- * Which pose the idle activity is drawn with.
- *
- * `2d` is the frozen side view (`activityPose`), which the 2D pool uses and
- * which must not change. `3d` is `leisurePose`, drawn for the 3D rig.
- */
-export type LeisureMode = '2d' | '3d';
-
 export interface PoseDriverOptions {
-  /** Default `2d`, so a driver made with no options is the 2D one. */
-  leisure?: LeisureMode;
   /**
    * Default false: the driver starts the spec's idle activity on its own
    * timer. The 3D pool turns this on (Sprint 29.4): its planner decides
@@ -215,7 +201,7 @@ export class PoseDriver {
   private actionEnding = false;
   /**
    * A prop the character carries, whatever it is doing (an errand's bottle
-   * or towel). Null for none, which is every 2D character's state.
+   * or towel). Null for none.
    */
   private carried: PropKind | null = null;
   /**
@@ -250,19 +236,16 @@ export class PoseDriver {
   /** The channel of the noise that the body rides on. */
   private readonly rideSeed: number;
 
-  /** Which activity pose is drawn, and which props go with it. */
-  private readonly leisure3d: boolean;
   /** True when the scene, not the driver's own timer, starts the idle activities. */
   private readonly sceneIdle: boolean;
   /**
-   * What a 3D activity looks at, how strong the sun is, and the figure's
+   * What the activity looks at, how strong the sun is, and the figure's
    * shape (the far hand of a two-handed prop reaches its edge for that shape).
    */
   private leisureOptions: LeisureOptions;
 
   constructor(spec: CharacterSpec, options: PoseDriverOptions = {}) {
     this.spec = spec;
-    this.leisure3d = (options.leisure ?? '2d') === '3d';
     this.sceneIdle = options.sceneIdle ?? false;
     this.leisureOptions = { ...DEFAULT_LEISURE, archetype: spec.archetype };
     this.swimPhase = spec.phaseOffset;
@@ -376,10 +359,7 @@ export class PoseDriver {
     this.setState('activity');
   }
 
-  /**
-   * What a 3D activity looks at, and how strong the sun is. Only the 3D
-   * driver reads it; the 2D pose ignores it.
-   */
+  /** What the activity looks at, and how strong the sun is. */
   setLeisureOptions(options: Partial<LeisureOptions>): void {
     this.leisureOptions = { ...this.leisureOptions, ...options };
   }
@@ -535,8 +515,7 @@ export class PoseDriver {
     }
     if (w.tread > 0.001) treadPose(this.layerTread, (this.time / ACTIONS.tread.seconds) % 1);
     if (this.activityOn || w.activity > 0.001) {
-      if (this.leisure3d) leisurePose(this.layerActivity, this.activityKind, this.activityU, this.motion, this.leisureOptions);
-      else activityPose(this.layerActivity, this.activityKind as IdleActivity, this.activityU, this.motion);
+      leisurePose(this.layerActivity, this.activityKind, this.activityU, this.motion, this.leisureOptions);
     } else {
       copyPose(this.layerRest, this.layerActivity);
     }
@@ -711,11 +690,11 @@ export class PoseDriver {
   /**
    * How open the eyes are, 0 (shut) to 1 (open).
    *
-   * In 3D a sunbather or a napper keeps its eyes shut for its whole
-   * activity; the blink is only for the rest.
+   * A sunbather or a napper keeps its eyes shut for its whole activity;
+   * the blink is only for the rest.
    */
   get eyes(): number {
-    if (this.leisure3d && this.activityOn) return Math.min(this.eyeOpen, leisureEyes(this.activityKind));
+    if (this.activityOn) return Math.min(this.eyeOpen, leisureEyes(this.activityKind));
     return this.eyeOpen;
   }
 
@@ -736,13 +715,14 @@ export class PoseDriver {
 
   /** The prop in the hand, or null when the hand is empty. */
   get prop(): PropKind | null {
+    // The towel is spread between both hands while it is shaken out.
+    if (this.carried === 'towel' && this.actionKind === 'towelShake') return 'towelSpread';
     if (this.carried !== null) return this.carried;
     const showing = this.state === 'activity' && this.activityOn;
     if (!showing) return null;
     // The tea glass is set down on its table at the put-down: the hand is empty after it.
-    if (this.leisure3d && this.activityKind === 'tea' && this.activityU >= TEA_PUT_DOWN_U) return null;
-    const table: Partial<Record<LeisureDrawKind, PropKind>> = this.leisure3d ? PROP_FOR_3D : PROP_FOR;
-    return table[this.activityKind] ?? null;
+    if (this.activityKind === 'tea' && this.activityU >= TEA_PUT_DOWN_U) return null;
+    return PROP_FOR[this.activityKind] ?? null;
   }
 
   /** How far the activity that is running has got, 0 to 1 (0 when none is running). */

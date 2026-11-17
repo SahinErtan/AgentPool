@@ -973,6 +973,10 @@ function inObstacle(world: World, b: Body): string | null {
   for (const o of world.obstacles) {
     if (o.name === 'pool') continue;
     if (o.name === 'hotTub' && b.errand?.kind === 'hotTub') continue;
+    // A body that climbs the board or the starting block stands on it; it is
+    // not inside it.
+    if (b.entry?.kind === 'board' && o.name === 'board') continue;
+    if (b.entry?.kind === 'block' && o.name === 'startBlock') continue;
     const a = o.area;
     if (b.x > a.minX && b.x < a.maxX && b.z > a.minZ && b.z < a.maxZ) return o.name;
   }

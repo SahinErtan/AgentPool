@@ -299,8 +299,8 @@ function reachesCorner(world: World, from: Vec2, to: Vec2): boolean {
 
 /**
  * The places that can be walked to from the gate, cached per world and per
- * place. A place in a sealed pocket of the deck (the two-lane pocket of Sprint
- * 23) is not, and its errand is not offered.
+ * place. The layout keeps every place reachable for one to eight lanes (a test
+ * checks it); a place that is sealed off all the same is not offered.
  */
 const reachCache = new WeakMap<World, Map<string, boolean>>();
 

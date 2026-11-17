@@ -17,6 +17,7 @@ import { buildRig3D } from '../src/scene/characters3d/rig3d';
 import { buildSkeleton3D, restPosition } from '../src/scene/characters3d/skeleton3d';
 import { FAR_EDGE, METRES_PER_UNIT } from '../src/scene/characters3d/grips';
 import { leisurePose } from '../src/scene/motion/leisure';
+import { ACTIONS } from '../src/scene/motion/actions';
 import type { LeisureKind } from '../src/scene/motion/leisureKind';
 import type { PropKind } from '../src/scene/motion/driver';
 
@@ -173,5 +174,27 @@ test('the other hand of a two-handed prop meets its far edge, within 4 cm', () =
     const off = left.distanceTo(point);
     assert.ok(off <= 0.04, `${kind}: the left hand is ${(off * 100).toFixed(1)} cm from the far edge`);
     rig.destroy();
+  }
+});
+
+test('the towel shaken out is spread between both hands, and the hands are inside its edges, on every shape', () => {
+  // The towel errand's shake: the towel is 72 cm wide, and each hand must be on it.
+  const HALF_WIDTH = 0.36;
+  const HALF_THICK = 0.02;
+  for (const archetype of ARCHETYPES) {
+    for (const u of [0, 0.3, 0.6]) {
+      const spec = specFor(`towel-${archetype}`, 'subagent', { accessory: 'none', height: 1, archetype });
+      const rig = buildRig3D(spec);
+      rig.root.scale.setScalar(METRES_PER_UNIT);
+      const pose = ACTIONS.towelShake.pose(zeroPose(), u, { t: 0, seed: 1 } as never);
+      applyPose3D(rig, pose, { eyes: 1, hair: 0, mouth: 0.12, ponytail: 0, prop: 'towelSpread' });
+      rig.root.updateMatrixWorld(true);
+      for (const [bone, name] of [['handR', 'right'], ['handL', 'left']] as const) {
+        const local = rig.props.towelSpread.worldToLocal(worldOf(rig, bone)).multiplyScalar(METRES_PER_UNIT);
+        assert.ok(Math.abs(local.x) <= HALF_WIDTH, `${archetype} u=${u}: the ${name} hand is ${local.x.toFixed(3)} m along the towel`);
+        assert.ok(Math.abs(local.y) <= HALF_THICK + 0.02, `${archetype} u=${u}: the ${name} hand is ${local.y.toFixed(3)} m from the towel's middle`);
+      }
+      rig.destroy();
+    }
   }
 });

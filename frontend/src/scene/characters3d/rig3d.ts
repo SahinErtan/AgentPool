@@ -9,7 +9,7 @@
  * out along the normals and drawn from the back, is the ink line round the
  * figure.
  *
- * Like the 2D rig, the character is a pure function of its spec: the same
+ * The character is a pure function of its spec: the same
  * agent id gives the same person, with no assets anywhere.
  */
 
@@ -46,6 +46,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { CharacterSpec } from '../characters/spec';
 import type { PropKind } from '../motion/driver';
 import { patchUnderwater } from '../pool3d/underwater';
+import { GLASS_COLOUR, SAUCER, SAUCER_COLOUR, TEA_COLOUR, TEA_GLASS_PROFILE, TEA_LIQUID_PROFILE, TEA_SURFACE } from './teaGlassShape';
 import { hairStyleFor } from './hair';
 import { GRIPS, METRES_PER_UNIT, type Grip } from './grips';
 import { BONES, boneLayout, buildSkeleton3D, restPosition, type BoneName, type Skeleton3D } from './skeleton3d';
@@ -652,34 +653,27 @@ function propMesh(parts: Part[], grip: Grip): Mesh {
 }
 
 /**
- * The tulip glass of tea (an ince belli), with its saucer and a spoon.
+ * The Turkish tea glass (an ince belli) with its saucer and a spoon. The
+ * glass, the tea and the saucer are shared with the glass on the side table
+ * (`teaGlassShape.ts`).
  *
- * The glass is a lathe of eight points: a foot, a bowl that is widest a
- * little above the middle, and a rim a little narrower than the bowl. The
- * tea is a smaller lathe inside it.
+ * The glass is centred on its bowl: its foot is `base` below the prop's
+ * origin, which is the grip's point.
  */
 function teaParts(spec: CharacterSpec): Part[] {
-  const glass = [
-    new Vector2(0.0, 0.0),
-    new Vector2(0.026, 0.0),
-    new Vector2(0.008, 0.012),
-    new Vector2(0.008, 0.04),
-    new Vector2(0.034, 0.075),
-    new Vector2(0.048, 0.11),
-    new Vector2(0.044, 0.14),
-    new Vector2(0.05, 0.155),
-  ];
-  const tea = [new Vector2(0.0, 0.02), new Vector2(0.03, 0.05), new Vector2(0.042, 0.085), new Vector2(0.042, 0.1)];
-  // The glass is centred on the middle of its bowl.
   const base = -0.077;
+  const glass = TEA_GLASS_PROFILE.map(([x, y]) => new Vector2(x, y));
+  const tea = TEA_LIQUID_PROFILE.map(([x, y]) => new Vector2(x, y));
   return [
-    piece(metric(new LatheGeometry(glass, 14), [0, base, 0]), '#f3e9d6'),
-    piece(metric(new LatheGeometry(tea, 14), [0, base, 0]), '#7a3418'),
-    piece(metric(new CylinderGeometry(0.068, 0.058, 0.008, 16), [0, base - 0.006, 0]), '#f4efe6'),
-    piece(metric(new TorusGeometry(0.026, 0.0025, 4, 12), [0, base + 0.006, 0], [Math.PI / 2, 0, 0]), spec.accent),
+    piece(metric(new LatheGeometry(glass, 14), [0, base, 0]), GLASS_COLOUR),
+    piece(metric(new LatheGeometry(tea, 14), [0, base, 0]), TEA_COLOUR),
+    piece(metric(new CircleGeometry(TEA_SURFACE.radius, 14), [0, base + TEA_SURFACE.y, 0], [-Math.PI / 2, 0, 0]), TEA_COLOUR),
+    // The saucer lies under the glass, its top four millimetres above the foot.
+    piece(metric(new CylinderGeometry(SAUCER.radiusTop, SAUCER.radiusBottom, SAUCER.thickness, 16), [0, base + SAUCER.thickness / 2, 0]), SAUCER_COLOUR),
+    piece(metric(new TorusGeometry(0.026, 0.0025, 4, 12), [0, base + SAUCER.thickness, 0], [Math.PI / 2, 0, 0]), spec.accent),
     // The spoon lies on the saucer, its bowl at the end of the handle.
-    piece(metric(new CylinderGeometry(0.0025, 0.0025, 0.09, 6), [0.04, base + 0.004, 0.02], [0, 0, Math.PI / 2]), '#cfd3d8'),
-    piece(metric(new SphereGeometry(0.007, 8, 6), [0.085, base + 0.004, 0.02]), '#cfd3d8'),
+    piece(metric(new CylinderGeometry(0.0025, 0.0025, 0.08, 6), [0.028, base + 0.0065, 0.02], [0, 0, Math.PI / 2]), '#cfd3d8'),
+    piece(metric(new SphereGeometry(0.007, 8, 6), [0.064, base + 0.0065, 0.02]), '#cfd3d8'),
   ];
 }
 
@@ -827,6 +821,9 @@ function headphonesMesh(sk: Skeleton3D): Mesh {
   return mesh;
 }
 
+/** The colour of the towel in the hand: the teal of the errand's towel. */
+const TOWEL_COLOUR = '#7ad3c9';
+
 /** The props held in the right hand (and the headphones, worn). */
 function buildProps(spec: CharacterSpec, sk: Skeleton3D): Record<PropKind, Object3D> {
   const r = sk.armR;
@@ -857,7 +854,9 @@ function buildProps(spec: CharacterSpec, sk: Skeleton3D): Record<PropKind, Objec
     bottle: propMesh([hand(new CapsuleGeometry(r * 0.55, r * 2.0, 3, 8), '#4aa3df', -r * 1.8, r * 1.4)], none),
     paddle: propMesh([hand(new CylinderGeometry(r * 1.8, r * 1.8, r * 0.3, 12), '#e85d4f', -r * 1.2, r * 1.2)], none),
     paddleDark: propMesh([hand(new CylinderGeometry(r * 1.8, r * 1.8, r * 0.3, 12), '#222222', -r * 1.2, r * 1.2)], none),
-    towel: propMesh([hand(new BoxGeometry(r * 6, r * 0.4, r * 4), '#7ad3c9', -r * 2.0, r * 1.6)], none),
+    // The towel is folded in the palm, and spread between both hands for the shake.
+    towel: propMesh([piece(metric(new BoxGeometry(0.2, 0.05, 0.14)), TOWEL_COLOUR)], GRIPS.towel),
+    towelSpread: propMesh([piece(metric(new BoxGeometry(0.72, 0.02, 0.2)), TOWEL_COLOUR)], GRIPS.towelSpread),
   };
 }
 

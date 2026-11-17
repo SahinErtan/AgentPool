@@ -1,15 +1,15 @@
 /**
  * The pool in three dimensions.
  *
- * The same pool, the same agents and the same backend as the 2D scene, seen
- * through a camera that can go round it. The characters walk across the
+ * The pool, its agents and the backend they come from, seen through a camera
+ * that can go round it. The characters walk across the
  * deck and round the water, climb down the ladder, swim lengths in their
  * lanes and turn at the wall, climb out and sit on loungers that face the
  * pool.
  *
  * The scene reads the store in its own frame loop, so React never re-renders
  * for the animation. It talks back to the store only to say what is under
- * the pointer and what was clicked, exactly as the 2D scene does.
+ * the pointer and what was clicked.
  */
 
 import {
@@ -43,8 +43,18 @@ import { TEA_PUT_DOWN_U } from '../motion/leisure';
 import type { ActionKind } from '../motion/actions';
 import type { LeisureKind } from '../motion/leisureKind';
 import { prefersReducedMotion } from '../motion';
-import { applyWeather, hourOfDay, paletteFor, type Palette } from '../pool/daylight';
-import { rainAmount, weatherFor, type Weather } from '../pool/weather';
+import { applyWeather, hourOfDay, paletteFor, type Palette } from './daylight';
+import { rainAmount, weatherFor, type Weather } from './weather';
+import {
+  calmAmount,
+  COVER_PROP,
+  isCalm,
+  isRaining,
+  rainLean,
+  stepCalm,
+  wantsCover,
+  workedAt,
+} from './weatherLife';
 import type { PoolSceneLike } from '../types';
 import { MAX_DISTANCE, MAX_POLAR, MIN_DISTANCE, MIN_POLAR, clampTarget, defaultView, viewPosition } from './camera';
 import { Particles, Rain } from './effects3d';
@@ -308,10 +318,6 @@ const SPRINKLER_SWEEP_S = 8;
 const SPRINKLER_LAUNCH = (35 * Math.PI) / 180;
 const SPRINKLER_SPEED = 6;
 const SPRINKLER_DROPS_PER_S = 25;
-/** The rain: how much a walker leans forward in it, in radians. */
-const RAIN_LEAN = 0.15;
-/** The pool is calm after this many seconds with nobody working. */
-const CALM_AFTER_S = 120;
 /** Petals: at most this many at once, and one every 20 to 40 seconds. */
 const PETALS_AT_ONCE = 6;
 const PETAL_GAP_MIN_S = 20;
@@ -410,7 +416,7 @@ export class PoolScene3D implements PoolSceneLike {
   /** Whether the pool has been quiet for a while (step 26.7), and for how long. */
   private calm = false;
   private quietFor = 0;
-  /** How calm the water is now, eased from 0 to 1 over ten seconds. */
+  /** How far the pool has come to calm, 0 lively .. 1 calm, moved linearly over ten seconds. */
   private calmK = 0;
   /** The scene time an agent last worked; the pool is calm after two minutes without one. */
   private lastWorkingAt = 0;
@@ -642,6 +648,7 @@ export class PoolScene3D implements PoolSceneLike {
       bodyOf: (id: string) => this.characters.get(id)?.body,
     },
     ladderLoad: (index, self) => ladderLoad(this.bodies(), index, self),
+    crowd: () => this.bodies(),
     swimGap: (self) => {
       const mine = self.swim;
       if (!mine || !self.inWater) return Number.POSITIVE_INFINITY;
@@ -684,7 +691,7 @@ export class PoolScene3D implements PoolSceneLike {
     rig.root.scale.setScalar(scale);
     this.scene.add(rig.root);
     // The planner starts the idle activities of the 3D pool, not the driver's own timer.
-    const driver = new PoseDriver(spec, { leisure: '3d', sceneIdle: true });
+    const driver = new PoseDriver(spec, { sceneIdle: true });
 
     // A newcomer comes up the path to the gate.
     const start = entrance(this.world, this.arrivals);
@@ -1231,7 +1238,7 @@ export class PoolScene3D implements PoolSceneLike {
       const body = character.body;
       body.boardFlex = this.boardFlex;
       // In the rain a walker hurries, and the outdoor errands end (the flow does that).
-      body.hurry = this.rainLevel > 0.3;
+      body.hurry = isRaining(this.rainLevel);
       stepBody(body, this.world, dt, walkers, this.flowContext, (index) =>
         ladderBusy(this.bodies(), index, body),
       );
@@ -1264,7 +1271,7 @@ export class PoolScene3D implements PoolSceneLike {
       if (body.strideCycles > 0) driver.advanceWalk(body.strideCycles);
       const pose = driver.update(dtMs);
       // A walker in the rain leans forward a little, as if it were hurrying against it.
-      if (body.hurry && body.state === 'walking') pose.bodyPitch += RAIN_LEAN;
+      pose.bodyPitch += rainLean(body.hurry, body.state === 'walking');
 
       // The rig follows the body, a little smoothed: sitting down and
       // stepping off the ladder are moves, not jumps. An entry is quick, so
@@ -1366,14 +1373,14 @@ export class PoolScene3D implements PoolSceneLike {
     this.updateTable();
     this.teaTables.tick(this.time);
     this.teaGlasses.sync((i) => this.teaTables.has(i));
+    this.updateBackTowels();
     this.updateCalm(dt);
     this.updateCreatures(dt);
     this.updateGarden(dt);
     this.updateRockets(dt);
     this.runTimedRipples(dt);
     this.particles.update(dt, this.world.waterY);
-    // The rain is the same clock as the 2D pool's; drops that land in the
-    // water leave a ring.
+    // Drops that land in the water leave a ring.
     const pool = this.world.pool;
     this.rainLevel = this.forcedWeather !== null ? (this.forcedWeather === 'rain' ? 1 : 0) : rainAmount(Date.now() / 1000);
     this.rain.update(dt, this.reducedMotion ? 0 : this.rainLevel, this.world.waterY, (x, z) => {
@@ -1729,17 +1736,18 @@ export class PoolScene3D implements PoolSceneLike {
   private coverUnderRain(character: Character): void {
     const body = character.body;
     const driver = character.driver;
-    const want =
-      this.rainLevel > 0.3 &&
-      body.state === 'lounging' &&
-      body.errand === null &&
-      !body.needsYou &&
-      !body.inWater &&
-      body.entry === null &&
-      !driver.isDoingActivity &&
-      character.variant === null;
+    const want = wantsCover({
+      raining: isRaining(this.rainLevel),
+      lounging: body.state === 'lounging',
+      onErrand: body.errand !== null,
+      needsYou: body.needsYou,
+      inWater: body.inWater,
+      inEntry: body.entry !== null,
+      doingActivity: driver.isDoingActivity,
+      hasVariant: character.variant !== null,
+    });
     if (want) {
-      driver.setCarry('towel');
+      driver.setCarry(COVER_PROP);
       driver.hold('cover');
       character.covering = true;
     } else if (character.covering) {
@@ -1760,11 +1768,11 @@ export class PoolScene3D implements PoolSceneLike {
         break;
       }
     }
-    if (working) this.lastWorkingAt = this.time;
+    this.lastWorkingAt = workedAt(this.lastWorkingAt, this.time, working);
     this.quietFor = this.time - this.lastWorkingAt;
-    this.calm = this.quietFor >= CALM_AFTER_S;
-    this.calmK += ((this.calm ? 1 : 0) - this.calmK) * Math.min(1, dt / 10);
-    this.water.setCalm(this.calmK);
+    this.calm = isCalm(this.quietFor);
+    this.calmK = stepCalm(this.calmK, this.calm, dt);
+    this.water.setCalm(calmAmount(this.calmK));
     this.equipment.setCalm(this.calm);
   }
 
@@ -2072,6 +2080,21 @@ export class PoolScene3D implements PoolSceneLike {
       // The neighbour answers after this figure has spoken.
       mate.leisure.markIn = 2.6 + mate.leisure.rng() * 0.6;
     }
+  }
+
+  /**
+   * The towel over a back rest is hidden while its figure has it in hand: on
+   * the towel errand (from the lounger's foot until the errand ends), and while
+   * it covers its head with it in the rain (Sprint 25).
+   */
+  private updateBackTowels(): void {
+    const inHand = new Set<number>();
+    for (const c of this.characters.values()) {
+      const b = c.body;
+      if (b.lounger === null) continue;
+      if ((b.errand?.kind === 'towel' && b.carry === 'towel') || c.covering) inHand.add(b.lounger);
+    }
+    this.environment.setTowelsHidden((i) => inHand.has(i));
   }
 
   /**

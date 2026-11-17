@@ -27,7 +27,27 @@ export interface DemoHandle {
   close(): void;
 }
 
-/** The number of lanes the demo pool has. */
+/**
+ * The number of lanes the demo pool has. The pool grows with the crowd: a
+ * lane takes about six swimmers before they are on top of one another, so a
+ * big crowd gets more lanes than a small one.
+ */
+export function demoLanes(n: number): number {
+  if (n <= 20) return 4;
+  if (n <= 40) return 6;
+  return 8;
+}
+
+/**
+ * The length of the demo pool. The pool grows with the crowd: a lane that is
+ * too short for its swimmers has them on top of one another.
+ */
+export function demoLength(n: number): number {
+  if (n <= 24) return 16;
+  return 16 + (n - 24) * 0.7;
+}
+
+/** The number of lanes a pool of four holds, for the tests that want one. */
 export const DEMO_LANES = 4;
 /** The number of waiting spots at the edge of the pool. */
 export const DEMO_WAITING = 4;
@@ -502,7 +522,7 @@ export function demoAgents(n: number, nowS: number, state: DemoState): AgentView
     // The lane with the fewest swimmers, the lowest one first.
     let best = 0;
     let bestCount = Number.POSITIVE_INFINITY;
-    for (let lane = 0; lane < DEMO_LANES; lane += 1) {
+    for (let lane = 0; lane < demoLanes(state.n); lane += 1) {
       const count = state.lanes.get(lane)?.length ?? 0;
       if (count < bestCount) {
         bestCount = count;
@@ -551,7 +571,8 @@ export function demoAgents(n: number, nowS: number, state: DemoState): AgentView
   // --- the scene description: it changes with the crowd.
   state.payload = {
     scene: 'pool',
-    lanes: DEMO_LANES,
+    lanes: demoLanes(state.n),
+    length: demoLength(state.n),
     loungers: loungerCount,
     waiting: DEMO_WAITING,
     gate: 'gate',

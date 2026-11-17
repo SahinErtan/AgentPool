@@ -114,9 +114,10 @@ test('a rocket climbs, and its burst comes out of the top of its climb', () => {
       if (particles.kind[i] === PARTICLE_ROCKET && particles.life[i] > 0) top = Math.max(top, particles.position[i * 3 + 1]);
     }
   }
-  // Six metres a second for 0.85 s, and the rocket starts at 0.2 m: about
-  // five metres up, low enough for the default view to show the burst.
-  assert.ok(top > 4.5 && top < 5.8, `the rocket reached ${top} m`);
+  // A bit over four metres a second for 0.85 s, and the rocket starts at
+  // 0.2 m: about three and a half metres up, low enough for the default view
+  // to show the burst.
+  assert.ok(top > 3.3 && top < 4.3, `the rocket reached ${top} m`);
   // The sparks of the burst start at the top, not at the ground.
   let lowest = Number.POSITIVE_INFINITY;
   for (let step = 0; step < 30; step += 1) {
@@ -126,8 +127,8 @@ test('a rocket climbs, and its burst comes out of the top of its climb', () => {
     }
   }
   // Half a second after the burst a spark has fallen and flown out at most
-  // about two and a half metres from the five-metre top.
-  assert.ok(lowest > 2, `a burst spark was at ${lowest} m`);
+  // about two metres from the top.
+  assert.ok(lowest > 1.2, `a burst spark was at ${lowest} m`);
   particles.dispose();
 });
 

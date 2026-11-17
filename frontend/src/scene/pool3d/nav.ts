@@ -1,8 +1,8 @@
 /**
  * Walking round the pool.
  *
- * The 2D characters walked along one line, so the only question was how far
- * ahead the next one stood. On a 3D deck there is a pool in the middle, and
+ * Walking along one line only asks how far ahead the next one stands. On a
+ * deck there is a pool in the middle, and
  * a character that walks from the gate to a lounger on the far side has to
  * go round it, not through it. And there are other people on the deck.
  *

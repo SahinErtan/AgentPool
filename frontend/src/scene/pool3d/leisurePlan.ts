@@ -1,8 +1,8 @@
 /**
  * What an idle figure does on its lounger, and for how long (Sprint 29.4).
  *
- * The 2D pool's driver chose one activity for the whole life of a figure. In
- * 3D a figure has a small repertoire: its favourite (the spec's own
+ * A figure used to keep one activity for its whole life. Now it has a small
+ * repertoire: its favourite (the spec's own
  * `idleActivity`) and two more drawn from the 3D table. Each time it lies
  * down, or finishes an activity and has paused, the planner picks the next
  * one from the moment: the hour, the weather, how long the agent has been
@@ -15,7 +15,7 @@
 
 import { rngFor, type CharacterSpec, type IdleActivity } from '../characters/spec';
 import { LEISURE_KINDS, type LeisureKind } from '../motion/leisureKind';
-import type { Weather } from '../pool/weather';
+import type { Weather } from './weather';
 
 /** What the planner knows about a figure and its surroundings. */
 export interface LeisureContext {

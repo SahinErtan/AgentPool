@@ -2,13 +2,12 @@
  * The pool in three dimensions, in metres.
  *
  * A pure function of what the backend described (how many lanes, loungers
- * and waiting spots), and of nothing else. The 2D layout had to be searched
- * for every canvas size, because the picture *was* the layout; in 3D the
- * world keeps its size and only the camera frames it differently.
+ * and waiting spots), and of nothing else. The world keeps its size and only
+ * the camera frames it differently.
  *
  * Axes: y is up, the deck is at y = 0. The pool runs along x; its long side
  * nearest the default camera is at +z. The shallow end is at -x, the deep
- * end at +x, the same way round as the 2D pool.
+ * end at +x.
  */
 
 export interface Vec2 {
@@ -199,6 +198,11 @@ export interface Equipment {
 
 export const POOL_LENGTH = 16;
 export const LANE_WIDTH = 1.8;
+/**
+ * The strip between the wall and the outer lane's rope, in metres. The
+ * ladders hang in it and the swimmers wait in it, out of the lane's traffic.
+ */
+export const WALL_MARGIN = 0.5;
 export const DEFAULT_LANES = 4;
 export const DEFAULT_LOUNGERS = 6;
 export const DEFAULT_WAITING = 4;
@@ -209,6 +213,18 @@ export const LOUNGERS_PER_ROW = 8;
 
 /** The deck reaches this far past the far end of the pool: the terrace. */
 const TERRACE = 9.5;
+/**
+ * The terrace is laid out as if the pool were at least this wide (three lanes):
+ * a narrower pool leaves too little room for the pieces to stand clear of each
+ * other, and the sealed pockets between them cut places off from the gate.
+ */
+const MIN_TERRACE_HALF = 1.5 * LANE_WIDTH;
+/** The terrace of a pool narrower than three lanes is this much longer, for the ball court and the table. */
+const NARROW_EXTRA = 1.5;
+/** True for a pool narrower than three lanes. */
+function isNarrow(laneCount: number): boolean {
+  return laneCount < 3;
+}
 /** The half sizes of the kiosk and the ping-pong table, on the ground. */
 const KIOSK_HALF = { x: 0.9, z: 0.5 };
 const TABLE_HALF = { x: 0.7625, z: 1.37 };
@@ -262,10 +278,18 @@ export const HIP_BACK = 0.2;
 /** The side table of a lounger (Sprint 29.5). Its numbers are the tea station's reach. */
 /** Where the glass is, from the middle of the hips, to the figure's right, in metres. */
 export const TABLE_REACH = 0.444;
-/** How far the glass stands in front of the hips, in metres. */
-export const TABLE_FORWARD = 0.058;
-/** The height of the table top above the deck, in metres: just above the cushion. */
-export const TABLE_TOP = 0.41;
+/**
+ * How far the table stands in front of the hips, in metres (negative: behind
+ * them). Set on 2026-11-16 with TABLE_TOP, so that every archetype's arm reaches
+ * the glass (Sprint 29.5 tea reach).
+ */
+export const TABLE_FORWARD = -0.04;
+/**
+ * The height of the table top above the deck, in metres. Raised on 2026-11-16
+ * from 0.41 to 0.49 (still a side table, under 0.5): the short figures' shoulders
+ * are too far from a lower glass for their arms.
+ */
+export const TABLE_TOP = 0.49;
 /** The radius of the top, in metres. */
 export const TABLE_RADIUS = 0.13;
 /**
@@ -310,22 +334,29 @@ export function sideTableOf(lounger: Lounger): SideTable {
 }
 
 /**
- * How far the glass of tea stands from the middle of its table, towards the
- * lounger (Sprint 29.5). The glass's saucer (radius 6.8 cm) stays on the top
- * (radius 13 cm): 6 + 6.8 < 13.
+ * Where the glass of tea stands on its table, from the table's middle: towards
+ * the hips (the figure's left) and towards the back of the lounger, in metres
+ * (Sprint 29.5). The saucer's radius is 6.8 cm and the top's is 13 cm, so the
+ * saucer stays on the top: hypot(3, 3) cm + 6.8 cm < 13 cm.
  */
-export const GLASS_REACH = 0.06;
+export const GLASS_LEFT = 0.03;
+export const GLASS_BACK = 0.03;
 
 /**
  * Where the glass of tea stands on its table: the table's middle, moved
- * towards the lounger (to the figure's left), so that the figure reaches it.
- * The glass is taken and put back here; the table itself is `sideTableOf`.
+ * towards the hips and the back of the lounger, so that every archetype's
+ * hand reaches it. The glass is taken and put back here; the table itself is
+ * `sideTableOf`.
  */
 export function teaSpotOf(lounger: Lounger): SideTable {
   const t = sideTableOf(lounger);
   const f = lounger.facing;
-  // The figure's left is (fz, -fx): towards the hips.
-  return { ...t, x: t.x + f.z * GLASS_REACH, z: t.z - f.x * GLASS_REACH };
+  // The figure's left is (fz, -fx): towards the hips. Its back is -f.
+  return {
+    ...t,
+    x: t.x + f.z * GLASS_LEFT - f.x * GLASS_BACK,
+    z: t.z - f.x * GLASS_LEFT - f.z * GLASS_BACK,
+  };
 }
 
 /**
@@ -367,18 +398,23 @@ export function buildWorld(payload: Record<string, unknown> | null = null): Worl
   const loungerCount = count(payload?.loungers, DEFAULT_LOUNGERS, 24);
   const waitingCount = count(payload?.waiting, DEFAULT_WAITING, 8);
 
-  const width = laneCount * LANE_WIDTH;
+  const width = laneCount * LANE_WIDTH + 2 * WALL_MARGIN;
+  // The pool grows with the crowd: a lane that is too short for its swimmers
+  // has them on top of one another.
+  const length = count(payload?.length, POOL_LENGTH, 64);
   const pool: Area = {
-    minX: -POOL_LENGTH / 2,
-    maxX: POOL_LENGTH / 2,
+    minX: -length / 2,
+    maxX: length / 2,
     minZ: -width / 2,
     maxZ: width / 2,
   };
 
   // Lane 0 is the one nearest the camera, the way the eye reads a picture.
+  // The lanes stand inboard of the walls, so that a swimmer at the ladder or
+  // at the wall is out of the traffic of the outer lane.
   const lanes: Lane[] = [];
   for (let i = 0; i < laneCount; i += 1) {
-    lanes.push({ index: i, z: pool.maxZ - LANE_WIDTH * (i + 0.5), width: LANE_WIDTH });
+    lanes.push({ index: i, z: pool.maxZ - WALL_MARGIN - LANE_WIDTH * (i + 0.5), width: LANE_WIDTH });
   }
 
   // The loungers stand in rows behind the far side of the pool and look
@@ -406,11 +442,12 @@ export function buildWorld(payload: Record<string, unknown> | null = null): Worl
   }
 
   const backOfLoungers = pool.minZ - WALKWAY - rows * (LOUNGER_LENGTH + 1.1);
+  const half = Math.max(pool.maxZ, MIN_TERRACE_HALF);
   const deck: Area = {
     minX: pool.minX - 4.5,
-    maxX: pool.maxX + TERRACE,
-    minZ: Math.min(pool.minZ - 4, backOfLoungers - 0.6),
-    maxZ: pool.maxZ + 3.6,
+    maxX: pool.maxX + TERRACE + (isNarrow(laneCount) ? NARROW_EXTRA : 0),
+    minZ: Math.min(-half - 4, backOfLoungers - 0.6),
+    maxZ: half + 3.6,
   };
 
   // A ladder at each corner, on the long walls, clear of the starting
@@ -468,12 +505,8 @@ export function buildWorld(payload: Record<string, unknown> | null = null): Worl
     trees,
     sprinkler: { x: deck.minX - 5, z: gate.z - 1.5 },
     flowerBeds: flowerBedsOf(deck),
-    lanterns: lanternsOf(pool, deck, midZ(pool)),
+    lanterns: lanternsOf(pool, deck, [...buildObstacles(pool, equipment, lanes), ...loungers.map(tableObstacle)]),
   };
-}
-
-function midZ(pool: Area): number {
-  return (pool.minZ + pool.maxZ) / 2;
 }
 
 /**
@@ -520,15 +553,56 @@ function flowerBedsOf(deck: Area): Area[] {
  * on the far side behind the loungers, and two on the terrace. None of them
  * stands on a path or on a place where somebody stands (the test checks it).
  */
-function lanternsOf(pool: Area, deck: Area, mid: number): Vec2[] {
-  return [
-    { x: pool.minX + 6, z: deck.maxZ - 0.3 },
-    { x: pool.maxX - 3, z: deck.maxZ - 0.3 },
-    { x: -6, z: deck.minZ + 0.3 },
-    { x: 6, z: deck.minZ + 0.3 },
-    { x: deck.maxX - 0.3, z: mid - 3.0 },
-    { x: deck.maxX - 0.3, z: mid + 1.0 },
-  ];
+function lanternsOf(pool: Area, deck: Area, obstacles: { name: string; area: Area }[]): Vec2[] {
+  // The posts stand along the fence, 0.3 m inside it, and clear of every
+  // piece of the terrace: where the terrace reaches the fence, the post
+  // moves along it until it is clear.
+  const near: Vec2[] = [];
+  for (let x = deck.minX + 0.6; x <= deck.maxX - 0.6; x += 0.4) {
+    near.push({ x, z: deck.maxZ - 0.3 });
+  }
+  const far: Vec2[] = [];
+  for (let x = deck.minX + 0.6; x <= deck.maxX - 0.6; x += 0.4) {
+    far.push({ x, z: deck.minZ + 0.3 });
+  }
+  const end: Vec2[] = [];
+  for (let z = deck.minZ + 0.6; z <= deck.maxZ - 0.6; z += 0.4) {
+    end.push({ x: deck.maxX - 0.3, z });
+  }
+  const clear = (p: Vec2): boolean => {
+    if (p.x > pool.minX && p.x < pool.maxX && p.z > pool.minZ && p.z < pool.maxZ) return false;
+    for (const o of obstacles) {
+      const a = o.area;
+      if (p.x > a.minX - 0.1 && p.x < a.maxX + 0.1 && p.z > a.minZ - 0.1 && p.z < a.maxZ + 0.1) return false;
+      for (const c of [
+        { x: a.minX - 0.8, z: a.minZ - 0.8 },
+        { x: a.maxX + 0.8, z: a.minZ - 0.8 },
+        { x: a.maxX + 0.8, z: a.maxZ + 0.8 },
+        { x: a.minX - 0.8, z: a.maxZ + 0.8 },
+      ]) {
+        if (Math.hypot(c.x - p.x, c.z - p.z) <= 1.0) return false;
+      }
+    }
+    return true;
+  };
+  const spread = (list: Vec2[], count: number): Vec2[] => {
+    const free = list.filter(clear);
+    if (free.length === 0) return [];
+    const out: Vec2[] = [];
+    for (let k = 0; k < count && out.length < free.length; k += 1) {
+      const at = Math.round(((k + 0.5) / count) * (free.length - 1));
+      let best = free[at];
+      for (const p of free) {
+        if (out.every((o) => Math.abs(o.x - p.x) + Math.abs(o.z - p.z) > 2.5)) {
+          best = p;
+          break;
+        }
+      }
+      out.push(best);
+    }
+    return out;
+  };
+  return [...spread(near, 2), ...spread(far, 2), ...spread(end, 2)];
 }
 
 /** The spacing of the waiting spots along the coping. */
@@ -571,12 +645,17 @@ export function waitingSpots(pool: Area, ladders: Ladder[], count: number): Wait
 export function buildEquipment(pool: Area, deck: Area, lanes: Lane[]): Equipment {
   const laneCount = lanes.length;
   const midZ = (pool.minZ + pool.maxZ) / 2;
+  // The pieces of the terrace stand as round a pool of at least three lanes.
+  const half = Math.max(pool.maxZ, MIN_TERRACE_HALF);
+  const extra = isNarrow(laneCount) ? NARROW_EXTRA : 0;
 
   // The slide: a tower at the far corner of the deck, and a chute that
   // spirals down to the last lane.
-  const tower = { x: pool.maxX + 6.6, z: pool.minZ - 1.8 };
+  const tower = { x: pool.maxX + 6.6, z: -half - 1.8 };
   const slideLane = laneCount - 1;
-  const splash = { x: pool.maxX - 0.6, z: lanes[slideLane].z };
+  // On one lane the board and the chute share the lane: the chute lands on
+  // the far side of it, the board's base stands on the near side.
+  const splash = { x: pool.maxX - 0.6, z: laneCount === 1 ? lanes[0].z - 0.35 : lanes[slideLane].z };
   const chuteEnd = { x: splash.x + 1.0, z: splash.z };
   const path: Vec3[] = [
     { x: tower.x, y: 2.8, z: tower.z },
@@ -597,7 +676,7 @@ export function buildEquipment(pool: Area, deck: Area, lanes: Lane[]): Equipment
   const block = { x: pool.maxX + 1.6, z: boardZ };
 
   // The hot tub: a round tub in the far corner, with its step on the pool side.
-  const tubCentre = { x: pool.maxX + 4.2, z: pool.maxZ + 1.0 };
+  const tubCentre = { x: pool.maxX + 4.2, z: half + 1.0 };
   const tubRadius = 1.2;
   const seats: Spot[] = [45, 135, 225, 315].map((deg) => {
     const a = (deg * Math.PI) / 180;
@@ -611,16 +690,13 @@ export function buildEquipment(pool: Area, deck: Area, lanes: Lane[]): Equipment
 
   // The ping-pong table: a little way out from the middle of the deck, with
   // a player at each end.
-  // On one lane the tower reaches past the middle of the deck, and the table
-  // moves up the deck to stand clear of it.
-  const tableZ = laneCount === 1 ? Math.max(midZ + 1.0, tower.z + 4.75) : midZ + 1.0;
-  const tableCentre = { x: pool.maxX + 7.0, z: tableZ };
+  const tableCentre = { x: pool.maxX + 7.0 + extra, z: midZ + 1.0 };
 
   // The ball court: three players on a ring round a beach ball, on the
   // terrace beyond the far end of the pool.
   // Centred on the pool's middle: 0.6 m further out, the far spot of the
   // ring stood in the hot tub on a three-lane pool.
-  const courtCentre = { x: pool.maxX + 3.6, z: midZ };
+  const courtCentre = { x: pool.maxX + 3.6 + extra, z: midZ };
   const courtSpots: Spot[] = [90, 210, 330].map((deg) => {
     const a = (deg * Math.PI) / 180;
     const x = courtCentre.x + 1.6 * Math.cos(a);
@@ -846,13 +922,34 @@ export function queueSpot(world: World, place: number): Vec2 {
   const perLine = Math.max(1, Math.floor(room / QUEUE_GAP) + 1);
   const line = Math.floor(place / perLine);
   const k = place % perLine;
-  // Every other line walks back the way the one before came.
-  const along = line % 2 === 0 ? k : perLine - 1 - k;
+  // The queue fills from the far end of the line, so that the one who comes
+  // last stands nearest the gate and walks past nobody. Every other line
+  // walks back the way the one before came.
+  const along = line % 2 === 0 ? perLine - 1 - k : k;
   return {
     // The lines are far enough apart for a person to walk between them.
     x: outside.x - line * 1.05,
     z: start + world.queueDir.z * QUEUE_GAP * along,
   };
+}
+
+/**
+ * The way to a place in the queue: round the back of the queue, so that the
+ * body does not walk through the ones that are already queuing.
+ */
+export function queueRoute(world: World, place: number): Vec2[] {
+  const outside = gateOutside(world);
+  const start = outside.z + world.queueDir.z * QUEUE_GAP;
+  const room = Math.abs(start - (world.queueDir.z < 0 ? world.deck.minZ : world.deck.maxZ));
+  const perLine = Math.max(1, Math.floor(room / QUEUE_GAP) + 1);
+  const line = Math.floor(place / perLine);
+  const spot = queueSpot(world, place);
+  // The strip the body walks along: beside the line it is going to stand in.
+  const stripX = outside.x - line * 1.05 - 0.5;
+  // The far end of the queue: the body walks past it and comes back along
+  // the strip.
+  const endZ = start + world.queueDir.z * (QUEUE_GAP * (perLine - 1) + 1.0);
+  return [{ x: stripX, z: endZ }, { x: stripX, z: spot.z }, spot];
 }
 
 /** Where a character stands at the top of a ladder. */
@@ -867,7 +964,8 @@ export function ladderTop(ladder: Ladder): Vec2 {
 export function ladderFoot(ladder: Ladder): Vec2 {
   return {
     x: ladder.x,
-    z: ladder.z + ladder.down.z * 0.55,
+    // The foot is in the strip by the wall, not in the lane's traffic.
+    z: ladder.z + ladder.down.z * 0.22,
   };
 }
 

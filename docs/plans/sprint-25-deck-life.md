@@ -405,10 +405,12 @@ Add every new action to the action row, and the props to a prop row:
   the plan refused the chat instead, and no chat would then start from the
   first row.
 - **25.1, reachability.** Every place of an errand must be reachable from the
-  gate, or the errand is not offered. On one lane the hot tub, the board's
-  base and the ball court are sealed off; on two lanes the kiosk, the hot tub,
-  the far end of the table and the ball court are. Those errands are simply
-  not drawn for those sizes.
+  gate, or the errand is not offered. Measured at first: on one lane the hot
+  tub, the board's base and the ball court were sealed off; on two lanes the
+  kiosk, the hot tub, the far end of the table and the ball court. Since the
+  terrace is laid out as for a three-lane pool (a narrower pool gets a longer
+  terrace), nothing is sealed for one to eight lanes; the check stays as a
+  safety net.
 - **25.1, the ball court centre.** It is on the pool's middle line, not 0.6 m
   towards the terrace: the far spot of the ring stood in the hot tub on three
   lanes. Clear of every obstacle for three to eight lanes.
@@ -432,6 +434,10 @@ Add every new action to the action row, and the props to a prop row:
   pose would stand the figure up. The towel errand carries a towel, but the
   towel on the back rest is not hidden: it is in the merged loungers mesh, and
   moving it into instances was not done.
+  - **Done on 2026-11-16:** the back-rest towels are one `InstancedMesh` (the
+    `towels` mesh in `environment.ts`, still one draw call), and a towel is
+    hidden (zero-scaled) while its figure carries it on the towel errand or
+    covers its head in the rain. The draw count did not change.
 - **25.3, props.** One more prop, `paddleDark`, for the second player's
   paddle; `paddle` is red. The tub's bubbles grow with the people in it
   (2 + 2 per person every 0.3 s).

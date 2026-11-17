@@ -8,8 +8,7 @@
  * when it changes, steps it every frame and then puts the rig where the body
  * says it is.
  *
- * The 2D scene has its own state machine, tangled up with its drawing; it is
- * left as it is, and this one is written to be tested.
+ * It is written apart from the drawing, so it can be tested.
  */
 
 import type { AgentPresentation } from '../../net/types';
@@ -18,8 +17,10 @@ import type { ActionKind } from '../motion/actions';
 import type { CharState, PropKind } from '../motion/driver';
 import { clearSegment, planPath, steer, type Walker } from './nav';
 import {
+  ENTRY_CLEAR_M,
   chooseEntry,
   entryApproach,
+  entryForMotion,
   entryOpen,
   entrySplash,
   pointAt,
@@ -34,6 +35,7 @@ import {
   startSwim,
   swimStep,
   swimToward,
+  yawFor,
   normaliseNear,
   TURN_SECONDS,
   type SwimOptions,
@@ -46,8 +48,10 @@ import {
   ladderFoot,
   ladderTop,
   loungerApproach,
+  queueRoute,
   queueSpot,
   swimZ,
+  WALL_MARGIN,
   type Ladder,
   type Vec2,
   type Vec3,
@@ -92,6 +96,20 @@ export const WALK_SPEED = 1.25;
 const HURRY_SPEED = 1.2;
 /** The errands that are done outdoors: they end when it rains. */
 const OUTDOOR_ERRANDS: ReadonlySet<ErrandKind> = new Set<ErrandKind>(['ballGame', 'pingPong', 'stroll', 'chat']);
+
+/**
+ * Whether an errand must end now: the agent wants anything but the lounger,
+ * its session needs the person, or it is raining and the errand is outdoors.
+ */
+export function abortsErrand(body: Pick<Body, 'errand' | 'desired' | 'needsYou' | 'hurry'>): boolean {
+  if (body.errand === null) return false;
+  return body.desired !== 'lounge' || body.needsYou || (body.hurry && OUTDOOR_ERRANDS.has(body.errand.kind));
+}
+
+/** The walking speed, in metres a second: a hurrying walker is 1.2 times as quick. */
+export function walkSpeedOf(body: Pick<Body, 'speedScale' | 'walkScale' | 'hurry'>): number {
+  return WALK_SPEED * (0.9 + 0.2 * body.speedScale) * body.walkScale * (body.hurry ? HURRY_SPEED : 1);
+}
 /** Swimming speed before the character's own speed scale. */
 export const SWIM_SPEED = 0.85;
 /** How long the climb down or up the ladder takes. */
@@ -201,6 +219,14 @@ export interface Body {
   entryAt: Vec2 | null;
   /** The way the debug hooks asked for: the next choice takes it. */
   forcedEntry: EntryKind | null;
+  /** Seconds a swimmer has been held back by another one, and seconds it is let through after waiting too long. */
+  swimWait: number;
+  swimPass: number;
+  /** The side a swimmer that was held back steps to (-1 or +1), and for how many more seconds. */
+  dodge: number;
+  dodgeT: number;
+  /** The spot across the lane the swimmer steps aside to. */
+  dodgeZ: number;
   /** What happened that the scene shows; the scene empties it every frame. */
   events: BodyEvent[];
   /** How far the diving board is bent at the tip, set by the scene. */
@@ -255,6 +281,11 @@ export function createBody(
     pendingEntry: null,
     entryAt: null,
     forcedEntry: null,
+    swimWait: 0,
+    swimPass: 0,
+    dodge: 0,
+    dodgeT: 0,
+    dodgeZ: 0,
     events: [],
     boardFlex: 0,
     glideLeft: 0,
@@ -335,9 +366,16 @@ export function applyPresentation(
       : 'unknown';
 
   if (body.desired === 'swim') {
-    body.lane = Math.max(0, Number(props.lane ?? 0) | 0);
-    body.laneOffset = Number(props.lane_offset ?? 0) || 0;
+    const lane = Math.max(0, Number(props.lane ?? 0) | 0);
+    const offset = Number(props.lane_offset ?? 0) || 0;
     body.direction = Number(props.direction ?? 1) >= 0 ? 1 : -1;
+    // A swimmer keeps the lane it is in. The backend may hand out another
+    // lane while the body is in the water, and a swimmer that crossed the
+    // lanes on the way would swim through the one that is there — so the
+    // new lane is only taken the next time the body goes in.
+    if (body.inWater) return;
+    body.lane = lane;
+    body.laneOffset = offset;
     return;
   }
 
@@ -426,11 +464,14 @@ function deckGoal(body: Body, world: World, ctx: FlowContext): Goal | null {
  */
 function chooseWay(body: Body, world: World, ctx: FlowContext): void {
   let kind: EntryKind = 'ladder';
+  const reducedMotion = ctx.entries?.reducedMotion ?? false;
   if (body.forcedEntry !== null) {
-    kind = body.forcedEntry;
+    // A forced entry is a jump too, so reduced motion turns it into the
+    // ladder as well.
+    kind = entryForMotion(body.forcedEntry, reducedMotion);
     body.forcedEntry = null;
   } else if (ctx.entries) {
-    kind = chooseEntry(body, world, ctx.entries.busy(body), ctx.entries.reducedMotion);
+    kind = chooseEntry(body, world, ctx.entries.busy(body), reducedMotion);
   }
   body.entriesMade += 1;
   const at = entryApproach(world, kind, body);
@@ -501,6 +542,8 @@ export interface FlowContext {
   entries?: { busy(self: Body): EntryBusy; reducedMotion: boolean };
   /** How many other bodies are on this ladder or making for it. */
   ladderLoad(index: number, self: Body): number;
+  /** Every body of the pool: the swimmers keep clear of one another. Without it they do not. */
+  crowd?(): Iterable<Body>;
   /**
    * How far ahead the nearest swimmer is that swims the same way in the
    * same lane, in metres; Infinity when there is none.
@@ -637,6 +680,34 @@ function insideObstacle(world: World, index: number, x: number, z: number, by: n
 const pushed = { x: 0, z: 0 };
 
 /**
+ * A spot clear of the equipment, as near the given one as it can be. A body
+ * that waits for its turn stands here, not inside the piece it came for.
+ */
+function clearSpot(world: World, x: number, z: number): { x: number; z: number } {
+  let px = x;
+  let pz = z;
+  for (let pass = 0; pass < 3; pass += 1) {
+    let moved = false;
+    for (let i = 1; i < world.obstacles.length; i += 1) {
+      if (!insideObstacle(world, i, px, pz, EQUIPMENT_CLEARANCE)) continue;
+      const a = world.obstacles[i].area;
+      const left = px - (a.minX - EQUIPMENT_CLEARANCE);
+      const right = a.maxX + EQUIPMENT_CLEARANCE - px;
+      const down = pz - (a.minZ - EQUIPMENT_CLEARANCE);
+      const up = a.maxZ + EQUIPMENT_CLEARANCE - pz;
+      const least = Math.min(left, right, down, up);
+      if (least === left) px = a.minX - EQUIPMENT_CLEARANCE;
+      else if (least === right) px = a.maxX + EQUIPMENT_CLEARANCE;
+      else if (least === down) pz = a.minZ - EQUIPMENT_CLEARANCE;
+      else pz = a.maxZ + EQUIPMENT_CLEARANCE;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return { x: px, z: pz };
+}
+
+/**
  * Keep a step off the equipment, and say whether it was possible.
  *
  * A step that would bring a walker into a piece of equipment's margin is
@@ -696,7 +767,7 @@ export function stepBody(
   // An errand never hides work: the moment the agent wants anything but the
   // lounger, or its session needs the person, the errand is dropped (a body in
   // the hot tub climbs out first).
-  if (body.errand !== null && (body.desired !== 'lounge' || body.needsYou || (body.hurry && OUTDOOR_ERRANDS.has(body.errand.kind)))) {
+  if (abortsErrand(body)) {
     abortErrand(body, ctx);
   }
 
@@ -775,7 +846,11 @@ export function stepBody(
   }
   if (!sameGoal(goal, body.goal)) {
     body.goal = goal;
-    body.path = route(world, body, goalPoint(world, goal));
+    // The queue is filled from the back, so that the one who comes last
+    // stands nearest the gate and walks past nobody.
+    body.path = goal.kind === 'queue'
+      ? [...route(world, body, queueRoute(world, goal.place)[0]), ...queueRoute(world, goal.place)]
+      : route(world, body, goalPoint(world, goal));
   }
 
   // At a ladder, the top is reached from a step or two away, and only
@@ -805,7 +880,7 @@ export function stepBody(
   }
 
   const self: Walker = { id: body.id, x: body.x, z: body.z, moving: true };
-  const speed = WALK_SPEED * (0.9 + 0.2 * body.speedScale) * body.walkScale * (body.hurry ? HURRY_SPEED : 1);
+  const speed = walkSpeedOf(body);
   const step = steer(self, next, speed, dt, others);
   // Equipment is never walked into. A step that would is pushed out of it;
   // if no push clears it, the walker slides along the equipment, one axis at
@@ -1010,12 +1085,46 @@ function placeOnSeat(body: Body, world: World, index: number): void {
   body.y = seatY * s;
 }
 
+/** How far down the ladder a body goes before it looks at the water under it. */
+const CLIMB_HOLD_AT = 0.5;
+
+/** The way a swimmer that comes down at the foot of a ladder swims off: away from the wall. */
+function footDir(world: World, foot: Vec2): 1 | -1 {
+  return foot.x > (world.pool.minX + world.pool.maxX) / 2 ? -1 : 1;
+}
+
+/** True when a swimmer is in the water within a body length of the foot of a ladder. */
+function footOccupied(self: Body, world: World, foot: Vec2, crowd: Iterable<Body>): boolean {
+  for (const o of crowd) {
+    if (o === self) continue;
+    // Another climber on the same ladder, further down or (at the same
+    // height) with the larger seed, goes first.
+    if (o.climbing < 0 && o.ladder === self.ladder) {
+      if (o.climbT > self.climbT || (o.climbT === self.climbT && o.seed > self.seed)) return true;
+      continue;
+    }
+    // A body that is coming up the same ladder is on its way out of the
+    // water: the ladder is one at a time.
+    if (o.climbing > 0 && o.ladder === self.ladder && o.climbT < 0.8) return true;
+    if (!o.inWater || !o.swim) continue;
+    const mine = torsoOf(foot.x, foot.z, yawFor(footDir(world, foot)), self.height);
+    const theirs = torsoOf(o.swim.x, o.swim.z, o.swim.yaw, o.height);
+    if (segmentDistance(...mine, ...theirs) < SWIM_CLEAR) return true;
+  }
+  return false;
+}
+
 function stepClimb(body: Body, world: World, dt: number, ctx: FlowContext): void {
   body.state = 'climbing';
-  body.climbT = Math.min(1, body.climbT + dt / CLIMB_SECONDS);
   const ladder = world.ladders[body.ladder] ?? world.ladders[0];
   const top = ladderTop(ladder);
   const foot = ladderFoot(ladder);
+  // Going down, the body stays on the rungs while a swimmer is at the foot.
+  let hold = false;
+  if (body.climbing < 0 && body.climbT >= CLIMB_HOLD_AT && body.climbT < 1 && ctx.crowd) {
+    hold = footOccupied(body, world, foot, ctx.crowd());
+  }
+  if (!hold) body.climbT = Math.min(1, body.climbT + dt / CLIMB_SECONDS);
   // Going down, u runs from the top to the foot; coming up, the other way.
   const u = body.climbing < 0 ? body.climbT : 1 - body.climbT;
   // Over the edge first, then down: the path bends at the coping.
@@ -1085,7 +1194,13 @@ function stepWater(
     const glide = body.glideLeft > 0 ? GLIDE_SPEED : 1;
     const speed =
       SWIM_SPEED * body.speedScale * plan.speed * (1 - body.fatigue) * follow * glide * body.raceBoost;
-    swimStep(swim, world, swimZ(world, body.lane, body.laneOffset, swim.dir), speed, body.height, dt, plan.options);
+    const keepX = swim.x;
+    const keepZ = swim.z;
+    swimStep(swim, world, body.dodgeT > 0
+        ? body.dodgeZ
+        : swimZ(world, body.lane, body.laneOffset, swim.dir),
+      speed, body.height, dt, plan.options);
+    keepClear(body, world, swim, keepX, keepZ, dt, ctx);
     // Treading water: held still with the chest at the surface.
     const treading =
       plan.options.hold === true || (plan.options.stopAtWall === true && swim.holding) || swim.resting > 0;
@@ -1119,12 +1234,28 @@ function stepWater(
     const ladder = world.ladders[body.ladder] ?? world.ladders[0];
     const foot = ladderFoot(ladder);
     const speed = SWIM_SPEED * body.speedScale * (1 - body.fatigue);
-    const arrived = swimToward(swim, foot.x, foot.z, speed, dt);
+    const keepX = swim.x;
+    const keepZ = swim.z;
+    // While somebody is on the ladder, the swimmer waits a body length off its foot.
+    const ladderFree = !busy(ladder.index);
+    // The swimmers that wait for a ladder stand in a queue along the wall,
+    // each one a body's length further from the ladder than the last. Two
+    // that wait at the same spot would be on top of one another.
+    const slot = ladderFree ? 0 : ladderSlot(foot, body, ctx);
+    const off = footDir(world, foot) * LADDER_WAIT_M * (1 + slot);
+    const arrived = swimToward(swim, foot.x + off, foot.z, speed, dt);
+    // At the foot of the ladder the body is the one that is waited for.
+    if (!arrived) keepClear(body, world, swim, keepX, keepZ, dt, ctx);
     body.state = 'swimming';
-    if (arrived && !busy(ladder.index)) {
+    if (arrived && ladderFree) {
       body.exitingWater = false;
       body.climbing = 1;
       body.climbT = 0;
+      // The body is on the ladder now, out of the water: it is not a
+      // swimmer any more, and the others do not keep clear of a place it
+      // has left.
+      body.inWater = false;
+      body.swim = null;
       body.state = 'climbing';
       body.yaw = normaliseNear(yawTowards(foot, ladderTop(ladder)), swim.yaw);
       body.x = foot.x;
@@ -1159,6 +1290,263 @@ function stepWater(
     sink = Math.max(sink, FLIP_DIP * Math.sin(Math.PI * u));
   }
   body.y = world.waterY - 0.06 - sink;
+}
+
+/** How far from the foot of a ladder a swimmer waits for it to be free, in metres. */
+const LADDER_WAIT_M = 1.6;
+
+/**
+ * The place in the queue at the foot of a ladder. The swimmers that are
+ * making for the same ladder stand in a line along the wall, each one a
+ * body's length further from it than the one before, so that two of them
+ * are never on top of one another. The order is by seed, so that it does
+ * not change from one frame to the next.
+ */
+function ladderSlot(foot: Vec2, self: Body, ctx: FlowContext): number {
+  if (!ctx.crowd) return 0;
+  let slot = 0;
+  for (const o of ctx.crowd()) {
+    if (o === self || !o.inWater || !o.swim || o.climbing !== 0) continue;
+    if (Math.abs(o.swim.z - foot.z) > 1.2) continue;
+    if (Math.abs(o.swim.x - foot.x) > 6) continue;
+    if (o.seed < self.seed) slot += 1;
+  }
+  return slot;
+}
+
+/** The half length of a swimmer's torso, as a part of its height. */
+export const TORSO_HALF = 0.3;
+/** How close two torsos may come, in metres. */
+export const SWIM_CLEAR = 0.4;
+/** How long a swimmer may be held back, in seconds, before it is let through. */
+const SWIM_WAIT_MAX = 10;
+/** How long a swimmer that waited too long is let through, in seconds. */
+const SWIM_PASS = 3;
+/** How long a swimmer may be held back, in seconds, before it is let through. */
+
+/** The distance between the segments a-b and c-d on the plane. */
+export function segmentDistance(
+  ax: number, az: number, bx: number, bz: number,
+  cx: number, cz: number, dx: number, dz: number,
+): number {
+  const d1x = bx - ax;
+  const d1z = bz - az;
+  const d2x = dx - cx;
+  const d2z = dz - cz;
+  const rx = ax - cx;
+  const rz = az - cz;
+  const a = d1x * d1x + d1z * d1z;
+  const e = d2x * d2x + d2z * d2z;
+  const f = d2x * rx + d2z * rz;
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  let s: number;
+  let t: number;
+  if (a <= 1e-9 && e <= 1e-9) {
+    s = 0;
+    t = 0;
+  } else if (a <= 1e-9) {
+    s = 0;
+    t = clamp(f / e);
+  } else {
+    const c = d1x * rx + d1z * rz;
+    if (e <= 1e-9) {
+      t = 0;
+      s = clamp(-c / a);
+    } else {
+      const b = d1x * d2x + d1z * d2z;
+      const denom = a * e - b * b;
+      s = denom > 1e-9 ? clamp((b * f - c * e) / denom) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) {
+        t = 0;
+        s = clamp(-c / a);
+      } else if (t > 1) {
+        t = 1;
+        s = clamp((b - c) / a);
+      }
+    }
+  }
+  return Math.hypot(rx + d1x * s - d2x * t, rz + d1z * s - d2z * t);
+}
+
+/** The torso of a swimmer: a segment along the heading. */
+function torsoOf(x: number, z: number, yaw: number, height: number): [number, number, number, number] {
+  const h = height * TORSO_HALF;
+  const sx = Math.sin(yaw) * h;
+  const sz = Math.cos(yaw) * h;
+  return [x - sx, z - sz, x + sx, z + sz];
+}
+
+/**
+ * Whether a swimmer at (x, z) heading `yaw` would be on top of another body of
+ * the pool, having come nearer to it than it was. A body that comes in is
+ * held back by the one that is already there: by one that is holding still,
+ * or that is held back itself, by the equipment with a rider, by a diver or
+ * a ladder with a climber, and, between two that move, by the one with the
+ * larger seed. A pair that is already closer than that may still part.
+ */
+export function swimBlocker(
+  self: Body,
+  x: number,
+  z: number,
+  yaw: number,
+  fromX: number,
+  fromZ: number,
+  crowd: Iterable<Body>,
+  world: World,
+): Body | null {
+  const mine = torsoOf(x, z, yaw, self.height);
+  const was = torsoOf(fromX, fromZ, yaw, self.height);
+  for (const o of crowd) {
+    if (o === self) continue;
+    let seg: [number, number, number, number] | null = null;
+    let priority = true;
+    if (o.entry !== null && o.entry.phase !== 'wait') {
+      // A diver, a rider, a jumper: where it comes down.
+      seg = torsoOf(o.entry.splash.x, o.entry.splash.z, yawFor(o.entry.dir), o.height);
+    } else if (o.climbing < 0 && o.climbT >= CLIMB_HOLD_AT) {
+      const foot = ladderFoot(world.ladders[o.ladder] ?? world.ladders[0]);
+      seg = torsoOf(foot.x, foot.z, yawFor(footDir(world, foot)), o.height);
+    } else if (o.inWater && o.swim) {
+      const sw = o.swim;
+      seg = torsoOf(sw.x, sw.z, sw.yaw, o.height);
+      if (!(sw.holding || sw.resting > 0 || o.state === 'treading' || (o.swimWait > 0 && o.swimPass <= 0))) {
+        // Two that move: one that swims the same way gives way to the one
+        // that is ahead of it; otherwise the larger seed goes first.
+        const hx = Math.sin(yaw);
+        const hz = Math.cos(yaw);
+        const same = hx * Math.sin(sw.yaw) + hz * Math.cos(sw.yaw) > 0.3;
+        const ahead = (sw.x - x) * hx + (sw.z - z) * hz;
+        priority = same && Math.abs(ahead) > 0.05 ? ahead > 0 : o.seed > self.seed;
+      }
+    }
+    if (!seg || !priority) continue;
+    const now = segmentDistance(mine[0], mine[1], mine[2], mine[3], seg[0], seg[1], seg[2], seg[3]);
+    if (now >= SWIM_CLEAR) continue;
+    const before = segmentDistance(was[0], was[1], was[2], was[3], seg[0], seg[1], seg[2], seg[3]);
+    if (now <= before + 1e-6) return o;
+  }
+  return null;
+}
+
+/**
+ * After a step in the water: when it brought the swimmer on top of another,
+ * the step is taken back and the swimmer waits. After waiting too long it is
+ * let through for a few seconds.
+ */
+function keepClear(body: Body, world: World, swim: SwimState, keepX: number, keepZ: number, dt: number, ctx: FlowContext): void {
+  if (!ctx.crowd) return;
+  if (body.swimPass > 0) {
+    body.swimPass = Math.max(0, body.swimPass - dt);
+    body.swimWait = 0;
+    return;
+  }
+  if (swim.turning > 0) {
+    body.swimWait = 0;
+    return;
+  }
+  const crowd = ctx.crowd();
+  const blocker = swimBlocker(body, swim.x, swim.z, swim.yaw, keepX, keepZ, crowd, world);
+  if (blocker === null) {
+    // Nobody is in the way any more, but a pair that was on top of one
+    // another has to part: the one that gives way steps aside.
+    const near = tooClose(body, swim, crowd, world);
+    if (near === null) {
+      body.swimWait = 0;
+      // A swimmer that stepped aside goes back to its place in the lane.
+      body.dodgeT = Math.max(0, body.dodgeT - dt);
+      return;
+    }
+    // It steps aside until the pair has parted. It never swims through.
+    stepAside(body, near, world);
+    return;
+  }
+  // Held back: it keeps its place along the pool, and may still move across
+  // it when that takes it away from the one in the way.
+  const newZ = swim.z;
+  swim.x = keepX;
+  swim.z = keepZ;
+  if (swimBlocker(body, keepX, newZ, swim.yaw, keepX, keepZ, crowd, world) === null) swim.z = newZ;
+  body.swimWait += dt;
+  const towards =
+    blocker.swim !== null &&
+    Math.sin(blocker.swim.yaw) * Math.sin(swim.yaw) + Math.cos(blocker.swim.yaw) * Math.cos(swim.yaw) < 0;
+  if (towards || body.swimWait > DODGE_AFTER) {
+    // Two that come towards each other part at once; otherwise the swimmer
+    // waits a moment and then steps aside, away from the one in the way.
+    stepAside(body, blocker, world);
+  }
+  if (body.swimWait > SWIM_WAIT_MAX) {
+    // It has waited long enough: it is let through, on the side it stepped
+    // aside to, so that the two pass each other and not through each other.
+    // The side is a body's width further out, so that it really goes past.
+    const otherZ = blocker.swim?.z ?? blocker.entry?.splash.z ?? blocker.z;
+    const gap = keepZ - otherZ;
+    body.dodge = Math.abs(gap) > 0.05 ? Math.sign(gap) : body.seed > blocker.seed ? 1 : -1;
+    body.dodgeZ = Math.max(
+      world.pool.minZ + WALL_MARGIN,
+      Math.min(world.pool.maxZ - WALL_MARGIN, keepZ + body.dodge * 1.3),
+    );
+    body.swimWait = 0;
+    body.swimPass = SWIM_PASS;
+    body.dodgeT = SWIM_PASS;
+  }
+}
+
+/** How long a held swimmer waits before it steps aside, in seconds. */
+const DODGE_AFTER = 0.8;
+/** How long a swimmer keeps stepping aside once it has begun, in seconds. */
+const DODGE_HOLD = 1.2;
+
+/**
+ * The body that is too close to this one, whether or not it is in the way:
+ * a pair that is on top of one another has to part.
+ */
+function tooClose(self: Body, swim: SwimState, crowd: Iterable<Body>, world: World): Body | null {
+  const mine = torsoOf(swim.x, swim.z, swim.yaw, self.height);
+  let nearest: Body | null = null;
+  let best = SWIM_CLEAR;
+  for (const o of crowd) {
+    if (o === self) continue;
+    let seg: [number, number, number, number] | null = null;
+    if (o.entry !== null && o.entry.phase !== 'wait') {
+      seg = torsoOf(o.entry.splash.x, o.entry.splash.z, yawFor(o.entry.dir), o.height);
+    } else if (o.climbing < 0 && o.climbT >= CLIMB_HOLD_AT) {
+      const foot = ladderFoot(world.ladders[o.ladder] ?? world.ladders[0]);
+      seg = torsoOf(foot.x, foot.z, yawFor(footDir(world, foot)), o.height);
+    } else if (o.inWater && o.swim) {
+      seg = torsoOf(o.swim.x, o.swim.z, o.swim.yaw, o.height);
+    }
+    if (!seg) continue;
+    const d = segmentDistance(mine[0], mine[1], mine[2], mine[3], seg[0], seg[1], seg[2], seg[3]);
+    if (d < best) {
+      best = d;
+      nearest = o;
+    }
+  }
+  return nearest;
+}
+
+/**
+ * The side a swimmer steps aside to: away from the one it is on top of, or,
+ * when they are on the same spot, the side its seed gives it.
+ */
+function stepAside(self: Body, other: Body, world: World): void {
+  const otherZ = other.swim?.z ?? other.entry?.splash.z ?? other.z;
+  const gap = (self.swim?.z ?? self.z) - otherZ;
+  self.dodge = Math.abs(gap) > 0.05 ? Math.sign(gap) : self.seed > other.seed ? 1 : -1;
+  // The spot it steps aside to: a body length to the side of where it is.
+  // It is worked out once, when the dodge starts: a spot that moved with the
+  // body would carry it to the wall of the pool.
+  if (self.dodgeT <= 0) {
+    // The spot it steps aside to stays inside the lanes: the strip by the
+    // wall belongs to the swimmers that are getting out.
+    self.dodgeZ = Math.max(
+      world.pool.minZ + WALL_MARGIN,
+      Math.min(world.pool.maxZ - WALL_MARGIN, (self.swim?.z ?? self.z) + self.dodge * 0.8),
+    );
+  }
+  self.dodgeT = DODGE_HOLD;
 }
 
 /** How deep a flip turn takes the swimmer, in metres. */
@@ -1300,6 +1688,7 @@ function firstPhase(kind: EntryKind, waits: boolean): string {
 
 /** The phases an entry may be given up in, before the body has left the deck. */
 function abortable(e: EntryState): boolean {
+  if (e.phase === 'wait') return true;
   switch (e.kind) {
     case 'block':
       return e.phase === 'step-up' || e.phase === 'ready';
@@ -1326,14 +1715,16 @@ function startEntry(body: Body, world: World, ctx: FlowContext): void {
   // The slide takes one rider at a time: the others wait at the foot of the
   // stairs. The other ways are checked again, and the ladder is taken if one
   // has become busy since the choice.
-  if (kind !== 'slide' && busy && !entryOpen(kind, body, world, busy)) {
-    takeLadder(body);
-    return;
-  }
+  // The ones that are busy only for a while are waited for, at the place the
+  // walk ended at (see `stepWait`); a forced entry does not wait.
+  // A body that is asked for a way in waits for it when it is busy: the
+  // ladder is only taken when the wait has gone on long enough. A forced
+  // way waits as well, so that the owner can watch the way he asked for.
+  const waits = busy !== undefined && !entryClear(kind, body, world, busy);
   const splash = entrySplash(world, kind, body.lane, at);
   body.entry = {
     kind,
-    phase: firstPhase(kind, busy?.slide === true),
+    phase: waits ? 'wait' : firstPhase(kind, busy?.slide === true),
     t: 0,
     splash,
     dir: swimDirAfter(world, splash),
@@ -1471,6 +1862,10 @@ function stepEntry(body: Body, world: World, dt: number, ctx: FlowContext): void
     beginDown(body, e);
     return;
   }
+  if (e.phase === 'wait' && e.kind !== 'slide') {
+    stepWait(body, world, dt, e, ctx);
+    return;
+  }
   switch (e.kind) {
     case 'block':
       stepBlock(body, world, dt, e);
@@ -1584,6 +1979,41 @@ function stepBoard(body: Body, world: World, dt: number, e: EntryState): void {
   }
 }
 
+/**
+ * Whether the water where the entry lands is clear and its equipment free.
+ * The slide's queue is its own (the chute is waited for in its first phase).
+ */
+function entryClear(kind: EntryKind, body: Body, world: World, busy: EntryBusy): boolean {
+  if (kind === 'slide') {
+    const splash = world.equipment.slide.splash;
+    return !busy.waterNear(splash.x, splash.z, ENTRY_CLEAR_M);
+  }
+  return entryOpen(kind, body, world, busy);
+}
+
+/** How long a body waits on the deck for the water to be clear before it takes the ladder, in seconds. */
+const ENTRY_WAIT_MAX = 25;
+
+/** Waits at the place of the entry until the water where it lands is clear. */
+function stepWait(body: Body, world: World, dt: number, e: EntryState, ctx: FlowContext): void {
+  // The waiting spot is the one the body walked to, but it may be inside the
+  // equipment it came for: the block stands in the board's own footprint.
+  // The body waits clear of it.
+  const spot = clearSpot(world, e.origin.x, e.origin.z);
+  setAt(body, spot.x, 0, spot.z);
+  body.state = 'resting';
+  e.t += dt;
+  const busy = ctx.entries?.busy(body);
+  if (!busy || entryClear(e.kind, body, world, busy)) {
+    nextPhase(e, firstPhase(e.kind, busy?.slide === true));
+    return;
+  }
+  if (e.t >= ENTRY_WAIT_MAX) {
+    clearEntry(body);
+    takeLadder(body);
+  }
+}
+
 /** The walk along the board, in metres a second. */
 const BOARD_WALK = 0.9;
 
@@ -1602,7 +2032,15 @@ function stepSlide(body: Body, world: World, dt: number, e: EntryState, ctx: Flo
       const busy = ctx.entries?.busy(body);
       setAt(body, e.origin.x, 0, e.origin.z);
       body.state = 'resting';
-      if (!busy || !busy.slide) nextPhase(e, 'stairs');
+      e.t += dt;
+      // The chute must be free, and the water at the end of it clear (the
+      // rider gives up and takes the ladder after a long wait).
+      if (!busy || (!busy.slide && !busy.waterNear(slide.splash.x, slide.splash.z, ENTRY_CLEAR_M))) {
+        nextPhase(e, 'stairs');
+      } else if (e.t >= ENTRY_WAIT_MAX * 2) {
+        clearEntry(body);
+        takeLadder(body);
+      }
       return;
     }
     case 'stairs': {
@@ -1712,7 +2150,8 @@ function startLeave(body: Body, e: ErrandState): void {
   e.phase = 'leaving';
   e.t = 0;
   e.from = { x: body.x, y: body.y, z: body.z };
-  body.carry = null;
+  // The towel stays in the hand until the errand ends, so the figure does not drop it on the way out.
+  if (e.kind !== 'towel') body.carry = null;
 }
 
 /** Give the errand up: its slots are free, and the next one is some time off. */

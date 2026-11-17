@@ -6,14 +6,15 @@ import { PoolScene3D } from './PoolScene3D';
 /**
  * Hosts the 3D pool and keeps it in step with the store.
  *
- * Like the 2D canvas, React never re-renders for the animation: the scene
+ * React never re-renders for the animation: the scene
  * runs its own frame loop and reads the store there. React only shows the
  * tour's button, and the chip that says the tour is running.
  *
- * @param onLost Called when the browser takes the WebGL context away for
- *   good; the page then falls back to the 2D pool.
+ * @param onLost Called with `'failed'` when the pool cannot start, and with
+ *   `'lost'` when the browser takes the WebGL context away for good; the
+ *   page then shows a message in place of the pool.
  */
-export function Pool3DCanvas({ onLost }: { onLost: () => void }) {
+export function Pool3DCanvas({ onLost }: { onLost: (why: 'failed' | 'lost') => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<PoolScene3D | null>(null);
   const [touring, setTouring] = useState(false);
@@ -26,7 +27,7 @@ export function Pool3DCanvas({ onLost }: { onLost: () => void }) {
       scene = new PoolScene3D(host);
     } catch (error) {
       console.error('AgentPool: the 3D pool failed to start', error);
-      onLost();
+      onLost('failed');
       return;
     }
     scene.syncAgents([...store.get().agents.values()]);
@@ -46,8 +47,8 @@ export function Pool3DCanvas({ onLost }: { onLost: () => void }) {
     const lost = (event: Event) => {
       event.preventDefault();
       // Give the browser a moment to give the context back; if it does
-      // not, the 2D pool takes over.
-      const timer = window.setTimeout(onLost, 2500);
+      // not, the pool is replaced by a message.
+      const timer = window.setTimeout(() => onLost('lost'), 2500);
       canvas.addEventListener('webglcontextrestored', () => window.clearTimeout(timer), { once: true });
     };
     canvas.addEventListener('webglcontextlost', lost);

@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { rainAmount, SPELL_S, weatherFor } from '../src/scene/pool/weather';
+import { rainAmount, SPELL_S, weatherFor } from '../src/scene/pool3d/weather';
 
 /** A time in the middle of a spell that rains. */
 function aRainSpell(): number {

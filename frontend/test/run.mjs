@@ -44,15 +44,8 @@ for (const file of files) {
     target: 'node20',
     outfile: join(outDir, file.replace(/\.ts$/, '.mjs')),
     logLevel: 'error',
-    external: ['pixi.js'],
   });
 }
 
-// The shim is loaded with --import, so the globals are in place before
-// PixiJS is imported by the test files.
-const child = spawn(
-  process.execPath,
-  ['--import', join(here, 'shim.mjs'), '--test', outDir],
-  { stdio: 'inherit' },
-);
+const child = spawn(process.execPath, ['--test', outDir], { stdio: 'inherit' });
 child.on('exit', (code) => process.exit(code ?? 1));

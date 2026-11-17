@@ -16,6 +16,7 @@ import {
   buildPathTable,
   chooseEntry,
   entryApproach,
+  entryForMotion,
   entryOpen,
   pointAt,
   slideTable,
@@ -159,6 +160,24 @@ test('with reduced motion the choice is always the ladder', () => {
   }
 });
 
+test('with reduced motion a forced jump becomes the ladder as well', () => {
+  // The debug hook may ask for a slide, but the rule holds there too: a
+  // reduced motion has no dives and no slides.
+  const world = buildWorld(null);
+  for (const kind of ['block', 'board', 'slide', 'cannonball'] as const) {
+    assert.equal(entryForMotion(kind, true), 'ladder', kind);
+    assert.equal(entryForMotion(kind, false), kind, kind);
+    assert.equal(entryForMotion('ladder', true), 'ladder');
+
+    const body = diverAt(world, `forced-${kind}`, 0, kind);
+    const ctx = contextFor([body], true);
+    ctx.entries = { reducedMotion: true, busy: () => FREE };
+    stepBody(body, world, DT, [], ctx);
+    assert.equal(body.pendingEntry, 'ladder', `${kind} was forced through`);
+    assert.equal(body.entry, null, `${kind} started anyway`);
+  }
+});
+
 test('a cannonball is only offered on the two outside lanes', () => {
   const world = buildWorld(null);
   const body = createBody('middle', 1.6, 0.5, 1, queueSpot(world, 0));
@@ -170,8 +189,8 @@ test('a cannonball is only offered on the two outside lanes', () => {
 
 // --- reachability ----------------------------------------------------------
 
-test('for one to six lanes every entry approach is reachable, or the entry is disabled', () => {
-  for (let lanes = 1; lanes <= 6; lanes += 1) {
+test('for one to eight lanes every entry approach is reachable, and no entry is sealed off', () => {
+  for (let lanes = 1; lanes <= 8; lanes += 1) {
     const world = buildWorld({ lanes, loungers: 6, waiting: 4 });
     for (let lane = 0; lane < lanes; lane += 1) {
       for (const kind of ['block', 'board', 'slide', 'cannonball'] as const) {
@@ -183,9 +202,10 @@ test('for one to six lanes every entry approach is reachable, or the entry is di
           if (approach === null) continue;
           const open = entryOpen(kind, body, world, FREE);
           assert.ok(
-            reachable(world, world.gate, approach) || !open,
-            `${lanes} lanes, lane ${lane}: ${kind} at ${JSON.stringify(approach)} is open but unreachable`,
+            reachable(world, world.gate, approach),
+            `${lanes} lanes, lane ${lane}: ${kind} at ${JSON.stringify(approach)} is sealed off`,
           );
+          assert.ok(open, `${lanes} lanes, lane ${lane}: ${kind} is not open`);
         }
       }
     }
@@ -193,7 +213,7 @@ test('for one to six lanes every entry approach is reachable, or the entry is di
 });
 
 test('a choice never picks an entry whose approach cannot be reached', () => {
-  for (let lanes = 1; lanes <= 6; lanes += 1) {
+  for (let lanes = 1; lanes <= 8; lanes += 1) {
     const world = buildWorld({ lanes, loungers: 6, waiting: 4 });
     for (let i = 0; i < 120; i += 1) {
       const body = createBody(`pick-${lanes}-${i}`, 1.6, 0.5, 1, queueSpot(world, 0));

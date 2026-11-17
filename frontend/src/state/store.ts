@@ -1,7 +1,7 @@
 /**
  * A tiny external store.
  *
- * The Pixi scene reads from it in its ticker, so React only re-renders for
+ * The scene reads from it in its frame loop, so React only re-renders for
  * the panels — the 60 fps path never touches React state.
  */
 

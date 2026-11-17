@@ -1,7 +1,7 @@
 /**
  * The store.
  *
- * The Pixi scene reads it in its ticker and React reads it when it paints,
+ * The scene reads it in its frame loop and React reads it when it paints,
  * so it is the one piece of the frontend that everything else goes
  * through. It has to hold its tongue: the same value set twice must not
  * wake anybody up.

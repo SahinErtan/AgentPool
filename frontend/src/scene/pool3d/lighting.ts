@@ -1,7 +1,7 @@
 /**
  * The light of the day, in 3D.
  *
- * The palette of the 2D pool (`daylight.ts`) is reused as it is: it already
+ * The palette (`daylight.ts`) is used as it is: it already
  * knows what the sky, the water and the deck look like at every hour and in
  * every weather. Here it drives a sky dome, a hemisphere light (the sky
  * above and the deck below), and the sun, which casts the shadows. The sun
@@ -21,7 +21,7 @@ import {
   Vector3,
   type Scene,
 } from 'three';
-import type { Palette } from '../pool/daylight';
+import type { Palette } from './daylight';
 import type { World } from './world';
 import { nightAmount } from './creatures';
 

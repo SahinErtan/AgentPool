@@ -13,7 +13,7 @@ backend/agentpool/
    ▼
    WS frames { scene, agents: [AgentView] }
    ▼
-frontend/src/scene/pool/                                    ← the pixels
+frontend/src/scene/pool3d/                                  ← the pixels (Three.js)
 ```
 
 The **bridge** never mentions a pool, a lane, a lounger or a gate. It converts Claude Code's hook
@@ -57,17 +57,13 @@ oscillation and lag the stroke by ~80 ms, which makes the swim look syrupy. Damp
 each stroke crisp while still cross-fading smoothly, and it makes interruption free: an agent that
 goes idle mid-swim simply has its `swim` weight fall to zero.
 
-### Two rules that are easy to get wrong
+### A rule that is easy to get wrong
 
-1. **A sub-layer must be taken out of a separately damped parent.**
-   Writing `w.lounge = damp(w.lounge, 1, k, dt) - w.activity` creates a feedback loop: the fixed
-   point is `1 - activity/damping`, which is *negative* for a damping factor below 1. The weights then
-   diverge every frame. The activity is therefore a sub-layer of the lounge, and the lounge weight is
-   damped on its own (`loungeRaw`) before the activity is subtracted from it.
-
-2. **Never rotate the root container for facing.** Mirroring with `scale.x = -1` also mirrors the
-   rotation sense. The rig therefore has a dedicated `facing` container between the root and the
-   body, so the root keeps the unit scale and the facing keeps the flip.
+**A sub-layer must be taken out of a separately damped parent.** Writing
+`w.lounge = damp(w.lounge, 1, k, dt) - w.activity` creates a feedback loop: the fixed point is
+`1 - activity/damping`, which is *negative* for a damping factor below 1. The weights then diverge
+every frame. The activity is therefore a sub-layer of the lounge, and the lounge weight is damped on
+its own (`loungeRaw`) before the activity is subtracted from it.
 
 ## Tuning constants
 
@@ -96,41 +92,8 @@ cooldown of 20–60 s, all drawn from its own `motion` stream. The rules that ke
 looking mechanical: **weighted random choice**, **bursts rather than loops**, and **desynchronised
 starts**.
 
-## PixiJS v8 notes
+## Under the water
 
-- `Application.init()` is asynchronous and must be awaited.
-- `app.view` is gone → `app.canvas`.
-- The Graphics API is the fluent one: `g.roundRect(...).fill(...)`, `g.stroke({ width, color })`.
-  `beginFill` / `lineStyle` no longer exist.
-- `TilingSprite` uses the object constructor: `new TilingSprite({ texture, width, height })`.
-- `container.sortableChildren = true` plus `zIndex` replaces `sortChildren()`.
-- Masks live in the **parent's coordinate space**; the mask `Graphics` must be a child of the same
-  container that uses it.
-- **Never set `renderable = false` on a mask.** In PixiJS v8 a mask is drawn into the stencil buffer
-  and left out of the colour pass, so it never shows up on the screen on its own. Taking it out of the
-  render pass as well makes the whole masked layer disappear — and it does so in *some* browsers only,
-  which is the worst kind of bug. The characters vanished in Chromium under Playwright while they were
-  perfectly fine in the same build under a plain Chrome.
-
-### Do not use `resizeTo`
-
-PixiJS v8's `ResizePlugin` keeps its state in **static** fields. Destroying one `Application` wipes
-the plugin for every other live application, which under React's StrictMode (mount → unmount → mount)
-breaks the surviving instance with `this._cancelResize is not a function`.
-
-AgentPool therefore does not use `resizeTo` at all: `frontend/src/scene/pixi.ts` exposes
-`observeHostSize(app, host)`, a plain `ResizeObserver` that calls `app.renderer.resize()`.
-
-### Destroying an application
-
-`Application.destroy()` throws if the application never finished initialising. Always guard the
-teardown with an `initialized` flag and destroy a pending application from inside its own
-`init().then()`.
-
-## The two-rig masking trick
-
-A swimming character has to be cut by the waterline. A Pixi container can only have one parent, so
-each character owns **two rigs built from the same spec**: a surface rig masked to above the waterline
-and an underwater rig masked to below it. The animator computes the pose once and writes the same
-joint transforms to both rigs, so the halves line up exactly. The underwater rig is created lazily —
-a character lounging on the deck never needs one.
+A swimming character is cut by the waterline in the 3D pool without masks: the water is a
+surface, and a fragment below it is tinted with the colour of the water, deeper is bluer. One
+patch applies to every material that can go into the pool (`frontend/src/scene/pool3d/underwater.ts`).

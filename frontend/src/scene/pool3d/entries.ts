@@ -137,8 +137,8 @@ const reachCache = new WeakMap<World, Map<string, boolean>>();
 /**
  * True when the approach of an entry can be walked to from the deck.
  *
- * A place in a sealed pocket (the two-lane pocket of Sprint 23) is not, and
- * the entry is simply not offered there.
+ * The layout keeps every place reachable for one to eight lanes (a test checks
+ * it); this is the safety net: a place that is sealed off is not offered.
  */
 export function approachReachable(world: World, approach: Vec2): boolean {
   let cache = reachCache.get(world);
@@ -209,6 +209,24 @@ export function chooseEntry(body: Body, world: World, busy: EntryBusy, reducedMo
     if (r < 0) return ENTRY_KINDS[i];
   }
   return 'ladder';
+}
+
+/**
+ * The kinds that are a jump: off the block, off the board, down the slide
+ * or a cannonball. The ladder is the only way in that is not a jump.
+ */
+export const JUMP_ENTRIES: readonly EntryKind[] = ['block', 'board', 'slide', 'cannonball'];
+
+/**
+ * The kind a body really uses.
+ *
+ * Reduced motion has no dives and no slides, so every jump becomes the
+ * ladder. The natural choice already does this; a forced entry has to be
+ * brought back to the ladder as well, or the debug hook would be the one
+ * place where the rule does not hold.
+ */
+export function entryForMotion(kind: EntryKind, reducedMotion: boolean): EntryKind {
+  return reducedMotion && JUMP_ENTRIES.includes(kind) ? 'ladder' : kind;
 }
 
 // --- the curve of the slide -------------------------------------------

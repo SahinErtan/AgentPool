@@ -1,13 +1,12 @@
 /**
  * The animation lab, in 3D (`?lab&3d`).
  *
- * The same rows as the 2D lab: every swim style in a strip of water, every
- * idle activity on a lounger, every reaction on a figure that stands. The
- * camera orbits, so a stroke can be looked at from the side, from above and
- * from the front; the scrubbers freeze a stroke, an activity or a reaction
- * at one moment. Out of the side view, the parts of a stroke that the 2D
- * rig could not show (the roll, the arms out to the side, the wave down the
- * spine) are what is worth looking at here.
+ * Every swim style in a strip of water, every idle activity on a lounger,
+ * every reaction on a figure that stands. The camera orbits, so a stroke
+ * can be looked at from the side, from above and from the front; the
+ * scrubbers freeze a stroke, an activity or a reaction at one moment. The
+ * parts of a stroke that a side view cannot show (the roll, the arms out to
+ * the side, the wave down the spine) are what is worth looking at here.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -172,7 +171,7 @@ export function Lab3D() {
       const scale = HEIGHT * spec.height;
       rig.root.scale.setScalar(scale);
       scene.add(rig.root);
-      const driver = new PoseDriver(spec, { leisure: '3d' });
+      const driver = new PoseDriver(spec);
       const figure: Figure = { rig, driver, kind, reaction, action, actionTimer: 0 };
       if (kind === 'swim') {
         driver.setState('swimming');
@@ -421,7 +420,6 @@ export function Lab3D() {
         </label>
         <button type="button" onClick={() => viewRef.current('front', focus)}>front</button>
         <button type="button" onClick={() => viewRef.current('side', focus)}>side</button>
-        <a href="?lab">2D lab</a>
         <pre className="lab-dump">{dump}</pre>
       </div>
     </div>

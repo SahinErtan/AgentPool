@@ -1,12 +1,11 @@
 /**
  * What a figure does on its lounger, drawn for the 3D rig (Sprint 29.3).
  *
- * The 2D activities (`activityPose`) were made for the side view: the arms
- * move forward and back, in the plane of the body, so a prop held in them
- * floats beside the figure. In 3D the arms can come in across the body and
- * the forearms can turn, so each activity here is drawn again from the
- * lounger's own pose. The 2D pool keeps `activityPose`, and this module is
- * only reached from the 3D driver.
+ * The activities of the first version (`activityPose`) were made for a side
+ * view: the arms move forward and back, in the plane of the body, so a prop
+ * held in them floats beside the figure. Here the arms can come in across the
+ * body and the forearms can turn, so each activity is drawn again from the
+ * lounger's own pose. Sunbathe, nap and stretch still start from `activityPose`.
  *
  * Every activity starts and ends at `loungePose`, so a figure lies down and
  * gets up again without a jump. Each one is a few phases on `u` (the whole
@@ -138,29 +137,29 @@ const BOOK_AT: Record<Archetype, Hands> = {
   round: { armR: 0.531, elbowR: 1.181, armOutR: -0.178, armTwistR: 0.374, wristR: 0.349, armL: 0.112, elbowL: 1.796, armOutL: -0.225, armTwistL: 0.178, wristL: 0 },
 };
 /*
- * The tea stations (Sprint 29.5). The glass stands 6 cm towards the lounger
- * from the middle of its table (`teaSpotOf`), and the right hand takes it
- * there. The arms are fitted per archetype; a short figure cannot bring the
- * glass in with its arm alone, so it also leans its upper body towards the
- * table (`TEA_LEAN`, at most 0.25 rad). The bean and the squat figures still
- * stop about 11 cm short (their elbow is straight): see the Deviations.
+ * The tea stations (Sprint 29.5). The glass stands on its table (`teaSpotOf`),
+ * and the right hand takes it there. The arms are fitted per archetype against
+ * the rig's bones, to the table of 2026-11-16 (the top at 0.49 m, the table
+ * 4 cm behind the hips): every archetype's hand is within 0.4 cm of the glass,
+ * with the lean (`TEA_LEAN`) at most 0.25 rad. The elbow is bent for the short
+ * figures too, so no figure needs a straight arm at the table.
  */
 const TEA_LEFT: Pick<Hands, 'armL' | 'elbowL' | 'armOutL' | 'armTwistL' | 'wristL'> = { armL: 0.05, elbowL: 1.43, armOutL: -0.25, armTwistL: 0.12, wristL: 0 };
 /** The right hand at the side table, the glass lifted off it, per archetype. */
 const TEA_TABLE: Record<Archetype, Hands> = {
-  bean: { armR: 0.143, elbowR: 0, armOutR: 0.25, armTwistR: -0.968, wristR: 0, ...TEA_LEFT },
-  pear: { armR: 0.147, elbowR: 0.001, armOutR: 0.349, armTwistR: 0.02, wristR: 0, ...TEA_LEFT },
-  tall: { armR: -0.162, elbowR: 0.893, armOutR: 0.3, armTwistR: -0.227, wristR: 0, ...TEA_LEFT },
-  squat: { armR: 0.143, elbowR: 0.001, armOutR: 0.205, armTwistR: 0.046, wristR: 0, ...TEA_LEFT },
-  round: { armR: 0.148, elbowR: 0.001, armOutR: 0.261, armTwistR: -0.333, wristR: 0, ...TEA_LEFT },
+  bean: { armR: -0.154, elbowR: 0.304, armOutR: 0.253, armTwistR: -0.704, wristR: 0, ...TEA_LEFT },
+  pear: { armR: -0.445, elbowR: 0.996, armOutR: 0.5, armTwistR: -0.035, wristR: 0, ...TEA_LEFT },
+  tall: { armR: -0.5, elbowR: 1.606, armOutR: 0.189, armTwistR: -0.696, wristR: 0, ...TEA_LEFT },
+  squat: { armR: -0.155, elbowR: 0.293, armOutR: 0.207, armTwistR: -0.663, wristR: 0, ...TEA_LEFT },
+  round: { armR: -0.307, elbowR: 1.036, armOutR: -0.054, armTwistR: -0.997, wristR: 0, ...TEA_LEFT },
 };
-/** How far the upper body leans to the table at the reach (spine bend, torso turn), per archetype. */
+/** How far the upper body leans to the table at the reach (spine bend, torso turn), per archetype. At most 0.25 rad. */
 const TEA_LEAN: Record<Archetype, { spine: number; torso: number }> = {
   bean: { spine: 0.25, torso: 0.25 },
-  pear: { spine: 0.25, torso: 0.25 },
-  tall: { spine: 0, torso: 0 },
+  pear: { spine: 0.004, torso: 0.055 },
+  tall: { spine: 0.16, torso: 0 },
   squat: { spine: 0.25, torso: 0.25 },
-  round: { spine: 0.25, torso: 0.25 },
+  round: { spine: 0.002, torso: 0.172 },
 };
 /** The glass at the chest, stirred, the left hand under the saucer. */
 const TEA_CHEST: Hands = { armR: 0.03, elbowR: 1.41, armOutR: -0.19, armTwistR: 0.2, wristR: 0.4, armL: 0.48, elbowL: 0.75, armOutL: -0.41, armTwistL: 0.43, wristL: 0 };
@@ -343,7 +342,7 @@ function call(out: Pose, u: number, motion: Motion, options: LeisureOptions): vo
   out.headYaw = rest.headYaw + (0.12 - rest.headYaw) * env;
 }
 
-/** Sunbathe: the 2D pose (hands behind the head), with the knee drawn up now and then. */
+/** Sunbathe: the hands behind the head, with the knee drawn up now and then. */
 function sunbathe(out: Pose, u: number, motion: Motion): void {
   const act = activityPose(scratch, 'sunbathe', u, motion);
   const env = envelope(u, 0.02, 0.12, 0.88, 0.98);
@@ -353,7 +352,7 @@ function sunbathe(out: Pose, u: number, motion: Motion): void {
   out.kneeL -= 0.6 * knee;
 }
 
-/** Nap: the 2D pose (hands on the belly, head to the side), a hand over the eyes now and then. */
+/** Nap: the hands on the belly, the head to the side, a hand over the eyes now and then. */
 function nap(out: Pose, u: number, motion: Motion): void {
   const act = activityPose(scratch, 'nap', u, motion);
   const env = envelope(u, 0.02, 0.12, 0.88, 0.98);
@@ -363,7 +362,7 @@ function nap(out: Pose, u: number, motion: Motion): void {
 }
 
 /**
- * Stretch: the 2D pose, with the upper body turned to each side in turn.
+ * Stretch: the upper body turned to each side in turn.
  *
  * The turn is the spine's (`torso`): the shoulders and the head go round, and
  * the hips and the legs stay on the lounger. A whole-body roll would tip the
@@ -508,8 +507,8 @@ function clampYaw(yaw: number): number {
 /**
  * The pose of a figure doing an activity on its lounger, in 3D.
  *
- * `out` is written and returned. `kind` is one of the 2D activities, or one of
- * the seven of Sprint 29. `u` is the progress of the whole activity, 0 to 1,
+ * `out` is written and returned. `kind` is one of the eleven spec activities,
+ * or one of the seven of Sprint 29. `u` is the progress of the whole activity, 0 to 1,
  * and `motion` is the figure's own clock and noise. `options` gives what the
  * figure looks at and how strong the sun is; the defaults look straight ahead
  * at a midday sun.

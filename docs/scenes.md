@@ -91,7 +91,7 @@ The label shows the name only. The card under the pointer shows the rest:
 the kind and the project, the session it belongs to, what it is doing now
 (`Bash: npm test`), for how long, and a session's last prompt.
 
-### How the 3D pool decides what a character does
+### How the pool decides what a character does
 
 The backend only says where an agent belongs: lounging, waiting, swimming
 in a lane, or leaving. The frontend decides everything else, in this order:

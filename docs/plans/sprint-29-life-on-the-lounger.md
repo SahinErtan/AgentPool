@@ -458,7 +458,7 @@ Four problems seen in the lab after 29.3 (screenshots taken on a squat figure, `
 - **Stations per archetype.** `TEA_TABLE`, `TEA_SIP` and `TEA_LEAN` are tables keyed by archetype, fitted against the rig's bones at the take and at the sip. A short figure leans its spine and torso 0.25 rad at the reach (the table's lean is the only use of `spine`/`torso` in tea, and it goes to zero with the table weight).
 - **The put-back is a real put-back.** The glass goes back down to the table at u = 0.86 (`TEA_PUT_DOWN_U`), where the hand is on the table. Before, the hand came back to the lounge and the glass was put back at the end, 20 cm and more away from the hand. Now the cup leaves the hand at the put-down (`PoseDriver.prop`), the glass appears on the table (`PoolScene3D.putDownGlass`), and the hand lets go and goes back to the lounge after it.
 - **Measured through the real driver** (`PoseDriver`, 3D, hand bone to glass centre, cm), take / put-back: tall 1.5 / 1.6, pear 2.6 / 3.3, round 3.9 / 4.0, **bean 11.8 / 11.8, squat 12.2 / 11.9**. Sip, hand to mouth: 2.1 to 2.8 on every archetype.
-- **Bean and squat are not within 4 cm, and the allowed levers do not get them there.** Their elbow is straight at the table and their shoulder is further from the table than the arm reaches (about 0.7 m against an arm of about 0.5 m). With the arm alone: 16.5 cm (bean) and 16.7 cm (squat). With the 0.25 rad lean: 13.3 cm. With the glass at the furthest spot on the top that keeps the saucer on it: about 11.5 cm. The test records 12 cm for these two, as the limit, not as a pass. Options for the next step, which need a decision: (a) sit short figures' hips 8 to 10 cm towards the table in `placeOnSeat` (a body placement change, not in the allowed list); (b) a table per archetype, which the scene does not have; (c) accept the miss (the cup appears in the hand about 12 cm from the glass on the table).
+- **Superseded on 2026-11-16: every archetype is within 4 cm (see the known misses below).** The text that follows is the state before the table was moved. **Bean and squat are not within 4 cm, and the allowed levers do not get them there.** Their elbow is straight at the table and their shoulder is further from the table than the arm reaches (about 0.7 m against an arm of about 0.5 m). With the arm alone: 16.5 cm (bean) and 16.7 cm (squat). With the 0.25 rad lean: 13.3 cm. With the glass at the furthest spot on the top that keeps the saucer on it: about 11.5 cm. The test records 12 cm for these two, as the limit, not as a pass. Options for the next step, which need a decision: (a) sit short figures' hips 8 to 10 cm towards the table in `placeOnSeat` (a body placement change, not in the allowed list); (b) a table per archetype, which the scene does not have; (c) accept the miss (the cup appears in the hand about 12 cm from the glass on the table).
 - **Driver bug fixed on the way.** `leisurePose` reuses its output pose, and `loungePose` does not set `spine` or `torso`, so a `+=` on them grew from frame to frame (the tea lean reached 400 rad in the driver). `leisurePose` now sets both to rest first. The stretch's `torso` turn had the same `+=`, so it had the same growth in the game; the test "a reused pose gives the same lean and turn each time" covers both.
 - **Lab and screenshots.** `?demo=8&debug` with a squat figure on lounger 3 (`sub:demo-3-0`), held with `driver.playActivity('tea', 600)` and `driver.forceActivity(u)`: the hand is at the table at the take and the glass stands there, and at the sip the hand is at the lips. The screenshots are `.playwright-mcp/29-tea-squat-reach.png` and `29-tea-squat-sip.png`. At the viewing distance the 12 cm miss is not visible; the numbers above are the measure. The bean and the other figures were not screenshotted.
 
@@ -486,11 +486,12 @@ The main session looked at every step's pictures and measured the result.
   full deck of 24 figures all holding a prop at the same moment would reach
   about 301; the planner's gaps make that unlikely, and it is noted here
   rather than hidden.
-- **Tea on the short figures is a known miss.** The bean and squat figures'
-  hand stays about 12 cm from the glass on the table: the shoulder is about
-  0.7 m from the table and the arm is shorter. At the normal camera distance
-  this is a few pixels. Moving short figures on their seat, or the tables,
-  is the way to close it if it is ever seen.
+- **Tea on the short figures: closed on 2026-11-16.** The side tables are now
+  0.49 m high (was 0.41), 4 cm behind the hips (was 6 cm in front), and the
+  glass stands 3 cm towards the hips and 3 cm towards the back of the lounger.
+  The arm stations were refitted; every archetype's hand is within 0.4 cm of the
+  glass at the take and the put-back, with the lean at most 0.25 rad, and the
+  test allows 4 cm for all of them.
 - `?demo=12` at 390 × 844: 60 fps, 125 calls. The console is clean in the
   demo, the crowd and `?2d`; the 2D pool looks and moves as before.
 

@@ -5,8 +5,7 @@
  * the origin is between its feet, y is up and it faces +z. Its left is +x
  * (seen from behind, looking where it looks).
  *
- * The proportions come from `spec.ARCHETYPES`. The 2D drawing keeps a copy
- * of its own with other numbers; the 3D figure reads the one table.
+ * The proportions come from `spec.ARCHETYPES`, the one table.
  */
 
 import { ARCHETYPES, type CharacterSpec } from '../characters/spec';
@@ -48,8 +47,7 @@ export const ANKLE = 0.03;
  * How big the head of the 3D figure is.
  *
  * The head of the round archetype was a third of the whole figure, and seen
- * from behind the head and the hair read as one dark ball. The 2D drawing
- * keeps its own numbers, so the 2D pool did not move.
+ * from behind the head and the hair read as one dark ball.
  */
 export const HEAD_SCALE_3D = 0.84;
 

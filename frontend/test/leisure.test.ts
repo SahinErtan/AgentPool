@@ -1,6 +1,5 @@
 /**
- * The 3D lounger activities (Sprint 29.3): the poses, the props they hold, and
- * the driver that chooses between the 2D and the 3D pose.
+ * The 3D lounger activities (Sprint 29.3): the poses, and the props they hold.
  *
  * The hands and the head are read from the bones' world matrices, as in
  * `reach.test.ts`, so this runs in node with no WebGL. The figure is scaled to
@@ -20,7 +19,7 @@ import { buildSkeleton3D, restPosition } from '../src/scene/characters3d/skeleto
 import { leisureEyes, leisurePose, TEA_PUT_DOWN_U, TEA_SIP_U, TEA_TAKE_U, type LeisureDrawKind } from '../src/scene/motion/leisure';
 import { LEISURE_KINDS, NEW_LEISURE_KINDS, type LeisureKind } from '../src/scene/motion/leisureKind';
 import { PoseDriver, type PropKind } from '../src/scene/motion/driver';
-import { buildWorld, GLASS_ORIGIN_Y, GLASS_REACH, HIP_BACK, TABLE_RADIUS, sideTableOf, teaSpotOf, type Lounger } from '../src/scene/pool3d/world';
+import { buildWorld, GLASS_BACK, GLASS_LEFT, GLASS_ORIGIN_Y, HIP_BACK, TABLE_RADIUS, sideTableOf, teaSpotOf, type Lounger } from '../src/scene/pool3d/world';
 
 const HEIGHT = 1.7;
 const TALL: Archetype = 'tall';
@@ -302,15 +301,11 @@ test('stretch: the upper body turns, and the hips and the feet stay on the loung
 /* ------------------------------------------------------------------ */
 
 /**
- * The reach the tea station allows, per archetype, in cm, from the hand to the
- * glass's standing point. Tall, pear and round are within the plan's 4 cm.
- * Bean and squat are not: their elbow is straight at the table, and their
- * shoulder is further from it than the arm reaches, so neither the arm, the
- * lean (0.25 rad) nor the glass's spot (6 cm towards the lounger, on the
- * table top) brings the hand to it. Measured: bean 11.4, squat 11.7 cm. This
- * is the limit of the current design (Deviations, 29.5), not a tolerance.
+ * The reach of the tea station, in cm, from the hand to the glass's standing
+ * point: the same limit for every archetype. The table was moved on 2026-11-16
+ * (top 0.49 m, 4 cm behind the hips) so that the short figures reach it too.
  */
-const TEA_REACH_CM: Record<Archetype, number> = { tall: 4, pear: 4, round: 4, bean: 12, squat: 12 };
+const TEA_REACH_CM = 4;
 
 /**
  * A figure lying on a lounger, placed as the pool places a lounging figure:
@@ -330,12 +325,13 @@ function onLounger(id: string, archetype: Archetype, l: Lounger, prop: PropKind 
 test('tea: the glass stands on the table top, and its saucer stays on it, on every lounger', () => {
   // The saucer is 6.8 cm in radius: the glass's spot and its saucer stay on the top.
   const SAUCER = 0.068;
-  assert.ok(GLASS_REACH + SAUCER <= TABLE_RADIUS, `the saucer hangs off the table by ${((GLASS_REACH + SAUCER - TABLE_RADIUS) * 100).toFixed(1)} cm`);
+  const REACH = Math.hypot(GLASS_LEFT, GLASS_BACK);
+  assert.ok(REACH + SAUCER <= TABLE_RADIUS, `the saucer hangs off the table by ${((REACH + SAUCER - TABLE_RADIUS) * 100).toFixed(1)} cm`);
   for (const l of buildWorld(null).loungers) {
     const table = sideTableOf(l);
     const spot = teaSpotOf(l);
-    // The spot is GLASS_REACH from the middle of the table, and on the top.
-    assert.ok(Math.abs(Math.hypot(spot.x - table.x, spot.z - table.z) - GLASS_REACH) < 1e-9, `lounger ${l.index}: the spot is not ${GLASS_REACH} m from the table's middle`);
+    // The spot is REACH from the middle of the table, and on the top.
+    assert.ok(Math.abs(Math.hypot(spot.x - table.x, spot.z - table.z) - REACH) < 1e-9, `lounger ${l.index}: the spot is not ${REACH} m from the table's middle`);
     assert.equal(spot.top, table.top);
     assert.equal(spot.radius, TABLE_RADIUS);
   }
@@ -351,7 +347,7 @@ test('tea: at the take and at the put-back, the hand is within the reach of its 
       const p = leisurePose(zeroPose(), 'tea', u, QUIET, { aim: 0, sun: 0.5, archetype });
       pose(fig, p);
       const off = at(fig.rig, 'handR').distanceTo(glass) * 100;
-      assert.ok(off <= TEA_REACH_CM[archetype], `${archetype} at the ${moment}: the hand is ${off.toFixed(1)} cm from the glass`);
+      assert.ok(off <= TEA_REACH_CM, `${archetype} at the ${moment}: the hand is ${off.toFixed(1)} cm from the glass`);
       // The lean is at most a quarter of a radian, and only towards the table.
       assert.ok(Math.abs(p.spine) <= 0.25 && Math.abs(p.torso) <= 0.25, `${archetype} at the ${moment}: the lean is ${p.spine.toFixed(2)}, ${p.torso.toFixed(2)}`);
     }
@@ -383,13 +379,12 @@ test('tea: the sip brings the glass to the mouth, within 8 cm, on every archetyp
 });
 
 /* ------------------------------------------------------------------ */
-/* The driver: the 2D pose by default, the 3D pose and props on request */
+/* The driver: the props of each activity */
 /* ------------------------------------------------------------------ */
 
-test('the driver shows the 3D props only when it is asked for the 3D pose', () => {
+test('the driver holds the prop that goes with each lounger activity', () => {
   const spec = specFor('driver-props', 'subagent', { accessory: 'none' });
-  const pool3d = new PoseDriver(spec, { leisure: '3d' });
-  const side2d = new PoseDriver(spec);
+  const driver = new PoseDriver(spec);
   const expected: [LeisureKind, PropKind | null][] = [
     ['tea', 'cup'], ['book', 'book'], ['phone', 'phone'], ['call', 'phone'], ['snack', 'snack'],
     ['newspaper', 'newspaper'], ['cards', 'cards'], ['laptop', 'laptop'], ['music', 'headphones'],
@@ -397,20 +392,15 @@ test('the driver shows the 3D props only when it is asked for the 3D pose', () =
     ['nap', null], ['stretch', null], ['chat', null], ['watch', null], ['cat', null],
   ];
   for (const [kind, prop] of expected) {
-    pool3d.playActivity(kind, 30);
-    pool3d.update(16);
-    assert.equal(pool3d.prop, prop, `3D ${kind}`);
-    side2d.playActivity(kind, 30);
-    side2d.update(16);
-    // The 2D driver has the props of Sprint 25 and before, and no others.
-    const old2d = (['tea', 'book', 'phone', 'call', 'snack', 'newspaper', 'cards'] as LeisureKind[]).includes(kind);
-    assert.equal(side2d.prop, old2d ? prop : null, `2D ${kind}`);
+    driver.playActivity(kind, 30);
+    driver.update(16);
+    assert.equal(driver.prop, prop, kind);
   }
 });
 
 test('the 3D driver plays the activity along its length: the book is read in the middle', () => {
   const spec = specFor('driver-clock', 'subagent', { accessory: 'none' });
-  const driver = new PoseDriver(spec, { leisure: '3d' });
+  const driver = new PoseDriver(spec);
   driver.playActivity('book', 60);
   // Half way through (30 s of a 60 s activity), the book is in the hands.
   for (let i = 0; i < 1875; i += 1) driver.update(16);
@@ -422,14 +412,14 @@ test('the 3D driver plays the activity along its length: the book is read in the
 
 test('the lounge for an agent with no activity: the 3D driver has no prop on its lounger', () => {
   const spec = specFor('driver-none', 'subagent', { accessory: 'none', idleActivity: 'none' });
-  const driver = new PoseDriver(spec, { leisure: '3d' });
+  const driver = new PoseDriver(spec);
   for (let i = 0; i < 40; i += 1) driver.update(16);
   assert.equal(driver.prop, null);
 });
 
 test('the 3D driver holds the tea glass until the put-down, and then the hand is empty', () => {
   const spec = specFor('driver-tea', 'subagent', { accessory: 'none', idleActivity: 'none' });
-  const driver = new PoseDriver(spec, { leisure: '3d' });
+  const driver = new PoseDriver(spec);
   driver.playActivity('tea', 40);
   // Thirty seconds of a 40 s activity: u = 0.75, the glass is still in the hand.
   for (let i = 0; i < 1875; i += 1) driver.update(16);

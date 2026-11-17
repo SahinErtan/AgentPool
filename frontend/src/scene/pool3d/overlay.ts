@@ -5,7 +5,7 @@
  * a DOM element stays sharp at every zoom, takes the page's font and costs
  * nothing to draw. The scene tells each label where the head is on the
  * screen every frame, and the labels that would cover a more important one
- * are hidden, the same rule as in the 2D pool.
+ * are hidden.
  *
  * The card under the pointer (Sprint 28) is in this layer too: one element,
  * reused for whichever agent the pointer is over.

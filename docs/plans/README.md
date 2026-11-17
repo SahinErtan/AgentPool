@@ -46,9 +46,6 @@ The earlier decisions still hold:
 
 - No backend change and no change of the scene contract
   (`describe()` / `presentation()`).
-- The 2D Pixi pool is a frozen fallback (`?2d`). It gets no new features,
-  and **its behaviour must not change**. Anything shared with it
-  (`characters/poses.ts`, `characters/spec.ts`) may only be *added to*.
 - All code, comments and docs are in English.
 - No commit unless the user asks for one.
 
@@ -98,19 +95,16 @@ working.
      `ACCESSORY_TABLE` would change the look of **every existing agent**.
    - A new attribute gets a **new channel name**, e.g.
      `rngFor(id, 'hair-style')`.
-6. **The 2D pool does not change.**
-   - New pose fields default to 0, and the 2D rig ignores them.
-   - New swim styles and actions are only reachable from 3D code.
-7. **Reduced motion** (`prefersReducedMotion()`):
+6. **Reduced motion** (`prefersReducedMotion()`):
    - no camera moves the person did not make;
    - no confetti or fireworks;
    - no slide, dive or cannonball (agents take the ladder);
    - creatures stay still or are hidden.
-8. **The frame does not allocate.** Reuse vectors (`this.tmp`), poses and
+7. **The frame does not allocate.** Reuse vectors (`this.tmp`), poses and
    arrays in the per-frame code, as the existing code does.
-9. **Comments in the house style.** Explain *why*, in plain sentences, the
+8. **Comments in the house style.** Explain *why*, in plain sentences, the
    way the existing files do. No commented-out code.
-10. **Performance budget.** Measured with `?demo=60&debug` on a desktop:
+9. **Performance budget.** Measured with `?demo=60&debug` on a desktop:
     - 50 fps or more;
     - draw calls ≤ 3 × agents + 110. Each character costs three calls:
       the body, the outline and the shadow pass. The scene cost about 75
@@ -121,7 +115,7 @@ working.
     - triangles ≤ 1.2 M.
 
     `?demo=12` on a phone-sized window (390 × 844) stays at 30 fps or more.
-11. **Console clean.** 0 errors and 0 warnings in the browser console.
+10. **Console clean.** 0 errors and 0 warnings in the browser console.
 
 ## Commands
 
@@ -148,20 +142,24 @@ Useful URLs (`?demo` and the `debug` hooks come from Sprint 21):
 | `/` | the 3D pool with the real agents |
 | `/?demo=12` | the 3D pool with 12 scripted fake agents, no backend needed |
 | `/?demo=60&debug` | the crowd test, with fps, draw calls and triangles in the corner |
-| `/?2d` | the frozen 2D pool (must look and behave as before) |
-| `/?lab&3d` | the 3D animation lab |
+| `/?lab` | the 3D animation lab |
 
 In the browser console, or through Playwright's `browser_evaluate`:
 
 ```js
 const s = window.__agentpool;           // the PoolScene3D
-s.stats();                              // { fps, calls, triangles, agents }
-s.debug.list();                         // [{ id, state, x, z, work, action, ... }]
-s.debug.play(id, 'cheer');              // play an action on a character
-s.debug.force(id, { work: 'run' });     // override what a character does
-s.debug.moment('finished', id);         // fire a moment (Sprint 27)
+s.stats();                              // { fps, calls, triangles, agents, props }
+s.debug.list();                         // [{ id, state, x, z, work, action, errand, ... }]
+s.debug.play(id, 'cheer');              // play an ActionKind once
+s.debug.hold(id, 'raiseHand');          // hold it until hold(id, null)
+s.debug.force(id, { work: 'edit' });    // override the tool it works with; null clears
+s.debug.force(id, { errand: 'towel' }); // start an errand now, for a figure on its lounger
+s.debug.leisure(id, 'tea', 20);         // a leisure activity for 20 s, on a lounger
 s.debug.look(x, z, distance);           // point the camera at a spot
+s.debug.time(60);                       // move the scene clock on by 60 s
 ```
+
+The full list of hooks, with their signatures, is in `README.md`.
 
 ## How each step is checked
 

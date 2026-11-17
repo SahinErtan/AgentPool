@@ -8,24 +8,15 @@
  * saucer, in metres.
  */
 
-import { CylinderGeometry, InstancedMesh, LatheGeometry, Matrix4, Quaternion, Vector2, Vector3 } from 'three';
+import { CircleGeometry, CylinderGeometry, InstancedMesh, LatheGeometry, Matrix4, Quaternion, Vector2, Vector3 } from 'three';
+import { SAUCER, GLASS_COLOUR, SAUCER_COLOUR, TEA_COLOUR, TEA_GLASS_PROFILE, TEA_LIQUID_PROFILE, TEA_SURFACE } from '../characters3d/teaGlassShape';
 import { merge, put, type Piece } from './build';
 import { GLASS_ORIGIN_Y, type SideTable } from './world';
 
-/** The tulip glass of tea, a lathe in metres, from its foot to its rim. */
-const GLASS: Vector2[] = [
-  new Vector2(0.0, 0.0),
-  new Vector2(0.026, 0.0),
-  new Vector2(0.008, 0.012),
-  new Vector2(0.008, 0.04),
-  new Vector2(0.034, 0.075),
-  new Vector2(0.048, 0.11),
-  new Vector2(0.044, 0.14),
-  new Vector2(0.05, 0.155),
-];
-const TEA: Vector2[] = [new Vector2(0.0, 0.02), new Vector2(0.03, 0.05), new Vector2(0.042, 0.085), new Vector2(0.042, 0.1)];
 /** The glass is centred on its bowl: its foot is this far below the origin. */
 const BASE = -GLASS_ORIGIN_Y;
+
+const toVectors = (points: readonly (readonly [number, number])[]): Vector2[] => points.map(([x, y]) => new Vector2(x, y));
 
 export class TeaGlasses {
   readonly mesh: InstancedMesh;
@@ -40,10 +31,13 @@ export class TeaGlasses {
 
   constructor(tables: SideTable[]) {
     this.tables = tables;
+    // The saucer lies on the table top, and the glass stands in its well: its
+    // foot is inside the saucer. The tea's surface is a disc over its lathe.
     const pieces: Piece[] = [
-      { geometry: put(new LatheGeometry(GLASS, 14), 0, BASE, 0), color: '#f3e9d6' },
-      { geometry: put(new LatheGeometry(TEA, 14), 0, BASE, 0), color: '#7a3418' },
-      { geometry: put(new CylinderGeometry(0.068, 0.058, 0.008, 16), 0, BASE - 0.006, 0), color: '#f4efe6' },
+      { geometry: put(new LatheGeometry(toVectors(TEA_GLASS_PROFILE), 14), 0, BASE, 0), color: GLASS_COLOUR },
+      { geometry: put(new LatheGeometry(toVectors(TEA_LIQUID_PROFILE), 14), 0, BASE, 0), color: TEA_COLOUR },
+      { geometry: put(new CircleGeometry(TEA_SURFACE.radius, 14), 0, BASE + TEA_SURFACE.y, 0, [-Math.PI / 2, 0, 0]), color: TEA_COLOUR },
+      { geometry: put(new CylinderGeometry(SAUCER.radiusTop, SAUCER.radiusBottom, SAUCER.thickness, 16), 0, BASE + SAUCER.thickness / 2, 0), color: SAUCER_COLOUR },
     ];
     const glass = merge(pieces, 'tea-glasses');
     this.mesh = new InstancedMesh(glass.geometry, glass.material, Math.max(1, tables.length));

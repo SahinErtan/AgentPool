@@ -423,6 +423,16 @@ body {
   display: block;
 }
 
+/* The message that takes the pool's place when it cannot be drawn. */
+.pool-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  color: #8fb3c9;
+}
+
 /* The panel is a column of its own, not a lid on the picture: the canvas
    is drawn in the space that is actually visible, so the right end of the
    pool is not hidden under the panel. */

@@ -41,29 +41,30 @@ export const PARTICLE_ROCKET = 7;
 
 /**
  * The rocket's climb, in metres a second, and how long it climbs for, in
- * seconds. It bursts about five metres up: the default view looks down at
- * the pool, and a burst much higher is above the top of the picture.
+ * seconds. It bursts about three and a half metres up: the default view
+ * looks down at the pool, and a burst much higher is above the top of the
+ * picture, where nobody sees it.
  */
-const ROCKET_SPEED = 6;
+const ROCKET_SPEED = 4.2;
 const ROCKET_LIFE = 0.85;
 /** One spark of the dim trail every this many seconds. */
 const TRAIL_EVERY = 0.05;
 const TRAIL_LIFE = 0.6;
 /** The sparks of a burst: how many, how fast they fly out, and how fast they fall. */
-const BURST_COUNT = 90;
-const BURST_SPEED = 3.5;
+const BURST_COUNT = 110;
+const BURST_SPEED = 3.2;
 const BURST_LIFE_MIN = 1.5;
 const BURST_LIFE_SPAN = 0.5;
 const SPARK_GRAVITY = 3;
 /**
  * The sizes of the rocket, its trail and its sparks. A point is drawn
- * `size × 320 / distance` pixels wide, and the default view is some 25 m
+ * `size × 320 / distance` pixels wide, and the default view is some 20 m
  * from the far edge of the pool: a size under 0.2 is a pixel or two there,
  * which is too little to see.
  */
-const ROCKET_SIZE = 0.3;
-const TRAIL_SIZE = 0.16;
-const SPARK_SIZE = 0.32;
+const ROCKET_SIZE = 0.45;
+const TRAIL_SIZE = 0.26;
+const SPARK_SIZE = 0.5;
 /** The effects the pending work keeps: a burst or a trail spark, queued while the buffer is read. */
 const PENDING = 32;
 
@@ -513,8 +514,8 @@ export class Particles {
 /**
  * Rain: short streaks falling over the deck.
  *
- * The weather is the same clock the 2D pool uses, so both pools rain at
- * the same time. The streaks are one set of line segments, moved on the
+ * The rain follows the weather clock (`weather.ts`). The streaks are one set
+ * of line segments, moved on the
  * CPU; when the rain stops they are simply not drawn.
  */
 export class Rain {

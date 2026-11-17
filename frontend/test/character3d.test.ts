@@ -1,5 +1,5 @@
 /**
- * The 3D character and the motion core it shares with the 2D one.
+ * The 3D character and the motion core that drives it.
  *
  * Three.js builds geometry and bones without a GPU, so the rig can be built
  * and posed here; only drawing it needs a browser.
@@ -19,11 +19,10 @@ import { applyPose3D } from '../src/scene/characters3d/apply3d';
 import { backRest, buildWorld, CHARACTER_HEIGHT } from '../src/scene/pool3d/world';
 import { clampTarget, defaultView, MAX_POLAR, MIN_POLAR, viewPosition } from '../src/scene/pool3d/camera';
 import { separateLabels } from '../src/scene/pool3d/overlay';
-import { sceneMode } from '../src/scene/SceneHost';
 
 const IDS = Array.from({ length: 40 }, (_, i) => `agent-${i}-${(i * 7919) % 1000}`);
 
-test('a new pose field starts at zero, so the 2D rig never sees it', () => {
+test('a new pose field starts at zero, so the rig never sees a stale value', () => {
   const pose = zeroPose();
   for (const key of POSE_KEYS) assert.equal(pose[key], 0, key);
   assert.equal(POSE_KEYS.length, Object.keys(pose).length);
@@ -323,13 +322,6 @@ test('a label that would cover a more important one is left out', () => {
     { id: 'alone', x: 400, y: 300, width: 60, height: 16, rank: 2, depth: 9 },
   ]);
   assert.deepEqual([...shown].sort(), ['alone', 'picked']);
-});
-
-test('the 3D pool is the default; ?2d and a browser with no WebGL2 get the 2D one', () => {
-  assert.equal(sceneMode('', true), '3d');
-  assert.equal(sceneMode('?debug', true), '3d');
-  assert.equal(sceneMode('?2d', true), '2d');
-  assert.equal(sceneMode('', false), '2d');
 });
 
 // --- the head, the hair and the mouth --------------------------------------

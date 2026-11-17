@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { hourOfDay, mixColour, paletteFor } from '../src/scene/pool/daylight';
+import { hourOfDay, paletteFor } from '../src/scene/pool3d/daylight';
 
 test('the middle of the day is bright and has no lamps', () => {
   const noon = paletteFor(13);
@@ -48,13 +48,6 @@ test('the sky is darker at night than at noon', () => {
   const brightness = (colour: number) =>
     ((colour >> 16) & 0xff) * 0.3 + ((colour >> 8) & 0xff) * 0.6 + (colour & 0xff) * 0.1;
   assert.ok(brightness(night.skyTop) < brightness(noon.skyTop));
-});
-
-test('the colours are mixed between the two ends', () => {
-  assert.equal(mixColour(0x000000, 0xffffff, 0), 0x000000);
-  assert.equal(mixColour(0x000000, 0xffffff, 1), 0xffffff);
-  // Halfway is the middle grey; the halves round up.
-  assert.equal(mixColour(0x000000, 0xffffff, 0.5), 0x808080);
 });
 
 test('the hour of the day counts the minutes', () => {

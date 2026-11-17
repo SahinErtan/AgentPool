@@ -59,7 +59,11 @@ export const GRIPS: Record<PropKind, Grip> = {
   bottle: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
   paddle: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
   paddleDark: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
-  towel: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
+  // The folded towel sits in the palm, under the wrist.
+  towel: { x: 0, y: -0.035, z: 0.02, rx: 0, ry: 0, rz: 0 },
+  // The spread towel is 72 cm wide, and its centre is 22 cm from the right wrist. The hands are 40 to 57 cm
+  // apart for the figures' shapes, so both hands are inside its edges.
+  towelSpread: { x: 0.22, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
 };
 
 /**

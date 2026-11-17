@@ -1,7 +1,7 @@
 /**
  * What a figure does on its lounger, as the 3D pool names it.
  *
- * The 2D pool and the spec only know the eleven `IdleActivity` values. The
+ * The spec only knows the eleven `IdleActivity` values. The
  * 3D lounger has seven more (Sprint 29). They are kept apart on purpose:
  * `ACTIVITY_TABLE` is what `specFor` draws from, and adding a kind to it
  * would change the look of every existing agent.

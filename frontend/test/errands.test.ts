@@ -234,8 +234,8 @@ test('a shower that is taken is queued for, and the queue moves up when it is fr
   assert.equal(b.taken.has('shower:q0'), false);
 });
 
-test('every place an errand is offered at is reachable from the deck, for one to six lanes', () => {
-  for (let lanes = 1; lanes <= 6; lanes += 1) {
+test('every place an errand is offered at is reachable from the deck, for one to eight lanes', () => {
+  for (let lanes = 1; lanes <= 8; lanes += 1) {
     const world = buildWorld({ lanes, loungers: 24, waiting: 4 });
     const offered = new Set<ErrandKind>();
     for (let round = 0; round < 60; round += 1) {
@@ -249,8 +249,8 @@ test('every place an errand is offered at is reachable from the deck, for one to
         }
       }
     }
-    // The errands that do not depend on a place of the deck are always offered.
-    for (const kind of ['towel', 'stroll'] as const) {
+    // No place of the terrace is sealed off, so every kind is offered at every size.
+    for (const kind of ['towel', 'stroll', 'shower', 'kiosk', 'hotTub', 'pingPong', 'ballGame', 'chat', 'sunscreen'] as const) {
       assert.ok(offered.has(kind), `${kind} is never offered with ${lanes} lanes`);
     }
   }

@@ -9,8 +9,8 @@
  * weight fall to zero.
  *
  * Angle convention: every joint angle is measured from straight down, and
- * positive means "forward" (towards the facing direction). The rig applies
- * `rotation = -angle` because Pixi's positive rotation is clockwise.
+ * positive means "forward" (towards the facing direction). Each rig turns the
+ * angle into its own rotation (see `characters3d/apply3d.ts`).
  */
 
 import type { CharacterSpec, IdleActivity, SwimStyle } from './spec';
@@ -62,16 +62,14 @@ export interface Pose {
   /**
    * The bend of the upper back against the hips, forward positive.
    *
-   * The 2D rig has no spine and ignores it. In 3D it carries the wave of
-   * the butterfly and the surge of the breaststroke.
+   * It carries the wave of the butterfly and the surge of the breaststroke.
    */
   spine: number;
   /**
    * The roll of the body about its own long axis.
    *
-   * In a side view a roll can only be drawn as a tilt in the picture, so
-   * `bodyRoll` stays small for the 2D rig. This is the roll a swimmer
-   * really makes, shoulder to shoulder, and only the 3D rig reads it.
+   * The swim styles keep it small, so a swimmer stays flat in the water.
+   * This is the roll a swimmer really makes, shoulder to shoulder.
    */
   roll: number;
   /**
@@ -79,8 +77,7 @@ export interface Pose {
    *
    * The shoulders and the head turn with it; the hips and the legs stay
    * where they are, so a figure that twists its upper body stays on its
-   * lounger. Only the 3D rig reads it (Sprint 29.3 fixes): the 2D rig has no
-   * spine and ignores it.
+   * lounger.
    */
   torso: number;
   /**
@@ -88,7 +85,7 @@ export interface Pose {
    *
    * The other angles all turn in the plane of the body's front and back.
    * A breaststroke sweeps out to the sides and a crawl brings the arm round
-   * over the water, and neither fits in that plane. The 2D rig ignores it.
+   * over the water, and neither fits in that plane.
    */
   armOutL: number;
   armOutR: number;
@@ -99,8 +96,7 @@ export interface Pose {
    * Squash and stretch of the whole figure.
    *
    * Positive stretches the figure up and thins it, negative squashes it
-   * down and thickens it; the volume stays about the same. The 2D rig
-   * ignores it: a side view has no room for it, and the 2D pool is frozen.
+   * down and thickens it; the volume stays about the same.
    */
   stretch: number;
   /**
@@ -108,15 +104,13 @@ export interface Pose {
    * forearm in, towards the body.
    *
    * It lets a forearm that is bent up in front of the chest turn its palm
-   * towards the middle, which a book or a cup needs. The 2D rig ignores it.
+   * towards the middle, which a book or a cup needs.
    */
   armTwistL: number;
   armTwistR: number;
   /**
    * The hand bent at the wrist, forward positive. The prop in the hand
    * tilts with it, so a cup can be turned towards the mouth.
-   *
-   * The 2D rig has no wrist and ignores it.
    */
   wristL: number;
   wristR: number;
@@ -532,10 +526,8 @@ function crawl(out: Pose, t: number): Pose {
   out.armOutR = right.out;
   out.armOutL = left.out;
 
-  // The body rolls towards the arm that is pulling. In a side view a roll
-  // about the long axis of the body can only be drawn as a tilt in the
-  // picture, and a tilt of a quarter of a radian lifted the whole swimmer
-  // out of the water, so the roll is a small one.
+  // The body rolls towards the arm that is pulling. A tilt of a quarter of a
+  // radian lifted the whole swimmer out of the water, so the roll is a small one.
   const pulling = Math.sin(phase * TAU - 0.6);
   out.bodyRoll = pulling * 0.05;
   // The real roll, shoulder to shoulder, for the 3D rig.

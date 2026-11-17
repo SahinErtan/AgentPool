@@ -29,8 +29,10 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  Euler,
   Object3D,
   PlaneGeometry,
+  Quaternion,
   RepeatWrapping,
   Shape,
   ShapeGeometry,
@@ -55,6 +57,7 @@ import {
   TABLE_FOOT_RADIUS,
   TABLE_RADIUS,
   TABLE_TOP,
+  type Lounger,
   type World,
 } from './world';
 
@@ -70,6 +73,12 @@ export interface Environment {
   setNight(night: number): void;
   /** 0 dry .. 1 wet: the deck darkens (step 26.6). */
   setWetness(wet: number): void;
+  /**
+   * Hide the towel over the back rest of each lounger that `hidden` names, and
+   * show the others (Sprint 25: the towel errand carries it). One draw call,
+   * however many towels.
+   */
+  setTowelsHidden(hidden: (index: number) => boolean): void;
   dispose(): void;
 }
 
@@ -216,9 +225,30 @@ function deckGeometry(world: World): BufferGeometry {
 
 const CUSHIONS = ['#f2c14e', '#e76f51', '#2a9d8f', '#f4a3a8', '#7fb7e6', '#b8d86b'];
 const TOWELS = ['#ffffff', '#ff9f68', '#7ad3c9', '#f7e07a', '#c7a7ff', '#ff8fb0'];
+/** The length of a back rest, in metres. */
+const BACK_REST_LEN = 0.82;
+/** How far the towel stands off the back rest's cushion, along its normal, in metres. */
+const TOWEL_LIFT = 0.07;
 
-/** One lounger: a frame, a seat, a back rest leaning back, legs, a towel. */
-function loungerPieces(world: World, index: number, pieces: Piece[], towels: Piece[]): void {
+/**
+ * The towel over a lounger's back rest, as the placement of its instance.
+ *
+ * The towel is a slab of its own and it stands a little clear of the cushion:
+ * a towel that touches the cushion is a razor-thin surface that the shadow map
+ * cannot hold.
+ */
+function towelMatrix(l: Lounger): Matrix4 {
+  const rest = backRest(l);
+  const tilt = l.facing.z * (Math.PI / 2 - BACKREST_LEAN);
+  return new Matrix4().compose(
+    new Vector3(l.x, rest.y + rest.normalY * TOWEL_LIFT, rest.z + rest.normalZ * TOWEL_LIFT),
+    new Quaternion().setFromEuler(new Euler(tilt, 0, 0)),
+    new Vector3(l.width * 0.62, 0.04, BACK_REST_LEN * 0.7),
+  );
+}
+
+/** One lounger: a frame, a seat, a back rest leaning back, legs. Its towel is an instance (`towelMatrix`). */
+function loungerPieces(world: World, index: number, pieces: Piece[]): void {
   const l = world.loungers[index];
   const seatY = l.seatHeight;
   const back = l.z - l.facing.z * (l.length / 2);
@@ -243,7 +273,7 @@ function loungerPieces(world: World, index: number, pieces: Piece[], towels: Pie
   // place and its normal come from the world, so the drawing and the test
   // cannot disagree about where the back of the lounger is.
   const lean = BACKREST_LEAN;
-  const restLen = 0.82;
+  const restLen = BACK_REST_LEN;
   const rest = backRest(l);
   const cy = rest.y;
   const cz = rest.z;
@@ -261,13 +291,6 @@ function loungerPieces(world: World, index: number, pieces: Piece[], towels: Pie
   pieces.push({
     geometry: put(new BoxGeometry(l.width * 0.9, 0.07, restLen * 0.95), ...layer(0.01), [tilt, 0, 0]),
     color: cushion,
-  });
-  // A towel over the back rest. It is a slab of its own and it stands a
-  // little clear of the cushion: a towel that touches the cushion is a
-  // razor-thin surface that the shadow map cannot hold.
-  towels.push({
-    geometry: put(new BoxGeometry(l.width * 0.62, 0.04, restLen * 0.7), ...layer(0.07), [tilt, 0, 0]),
-    color: TOWELS[index % TOWELS.length],
   });
   // Four legs down to the deck.
   for (const sx of [-1, 1]) {
@@ -491,18 +514,37 @@ export function buildEnvironment(world: World): Environment {
 
   // --- the loungers, merged into one mesh
   const loungerPiecesList: Piece[] = [];
-  const towelPiecesList: Piece[] = [];
   for (let i = 0; i < world.loungers.length; i += 1) {
-    loungerPieces(world, i, loungerPiecesList, towelPiecesList);
+    loungerPieces(world, i, loungerPiecesList);
   }
   const loungers = merge(loungerPiecesList, 'loungers');
   group.add(loungers);
   disposables.push(loungers.geometry);
   // The towels are a mesh of their own, because a towel is a sheet with no
   // thickness: a surface that thin cannot take a shadow without striping
-  // itself in the low sun of the evening.
-  const towels = merge(towelPiecesList, 'towels');
+  // itself in the low sun of the evening. They are one instanced mesh, so a
+  // towel can be hidden while its figure carries it (Sprint 25), at no extra
+  // draw call. The geometry is white, and each instance takes its colour.
+  const towelSlab = merge([{ geometry: new BoxGeometry(1, 1, 1), color: '#ffffff' }], 'towel-slab');
+  const towelCount = Math.max(1, world.loungers.length);
+  const towels = new InstancedMesh(towelSlab.geometry, towelSlab.material, towelCount);
+  towels.name = 'towels';
+  towels.castShadow = true;
   towels.receiveShadow = false;
+  // A hidden towel is scaled to nothing. The spare instance of a deck with no
+  // loungers is hidden too.
+  const towelHidden = new Matrix4().makeScale(0, 0, 0);
+  const towelShown: boolean[] = [];
+  const towelShownMatrix: Matrix4[] = [];
+  for (let i = 0; i < towelCount; i += 1) {
+    const l = world.loungers[i];
+    towelShown.push(l !== undefined);
+    towelShownMatrix.push(l ? towelMatrix(l) : towelHidden);
+    towels.setMatrixAt(i, towelShownMatrix[i]);
+    towels.setColorAt(i, new Color(TOWELS[i % TOWELS.length]));
+  }
+  towels.instanceMatrix.needsUpdate = true;
+  if (towels.instanceColor) towels.instanceColor.needsUpdate = true;
   group.add(towels);
   disposables.push(towels.geometry);
 
@@ -743,6 +785,17 @@ export function buildEnvironment(world: World): Environment {
     setWetness(wet) {
       wetness = Math.min(1, Math.max(0, wet));
       deckMaterial.color.copy(deckBase).multiplyScalar(1 - WET_DARKEN * wetness);
+    },
+    setTowelsHidden(hidden) {
+      let changed = false;
+      for (let i = 0; i < towelShown.length; i += 1) {
+        const want = i < world.loungers.length && !hidden(i);
+        if (want === towelShown[i]) continue;
+        towelShown[i] = want;
+        towels.setMatrixAt(i, want ? towelShownMatrix[i] : towelHidden);
+        changed = true;
+      }
+      if (changed) towels.instanceMatrix.needsUpdate = true;
     },
     dispose() {
       for (const d of disposables) d.dispose();

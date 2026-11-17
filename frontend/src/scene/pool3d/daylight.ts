@@ -162,7 +162,7 @@ const KEYS: { hour: number; palette: Palette }[] = [
 ];
 
 /** Mix two colours. */
-export function mixColour(a: number, b: number, t: number): number {
+function mixColour(a: number, b: number, t: number): number {
   const ar = (a >> 16) & 0xff;
   const ag = (a >> 8) & 0xff;
   const ab = a & 0xff;

@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { paletteFor } from '../src/scene/pool/daylight';
+import { paletteFor } from '../src/scene/pool3d/daylight';
 import {
   CreatureDirector,
   MAX_CREATURES,

@@ -578,7 +578,8 @@ function cover(out: Pose, motion: Motion): Pose {
   out.armR = -2.4;
   out.elbowL = 2.0;
   out.elbowR = 2.0;
-  out.headPitch = 0.2;
+  // The head bows: a negative pitch is forwards and down, past the lounge's own look along the legs.
+  out.headPitch = -0.6;
   return out;
 }
 

@@ -1,12 +1,11 @@
 /**
  * A pose, written onto the bones of a 3D character.
  *
- * The pose model is the one the 2D rig uses: joint angles measured from
- * straight down, positive forward. A rotation about x in Three.js turns a
- * limb that hangs down *backwards* for a positive angle, exactly as a
- * positive rotation in Pixi turns it backwards in the side view, so each
- * joint gets the same number the 2D rig gives it. The 3D-only fields (the
- * spine, the roll, the arms and legs out to the side) go on the other axes.
+ * The pose model: joint angles measured from straight down, positive forward.
+ * A rotation about x in Three.js turns a limb that hangs down *backwards* for
+ * a positive angle, so the writer negates the angle on each joint's x axis.
+ * The fields that are not in the plane of the body (the spine, the roll, the
+ * arms and legs out to the side) go on the other axes.
  */
 
 import type { Pose } from '../characters/poses';

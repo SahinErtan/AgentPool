@@ -9,6 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { damp } from '../src/scene/characters/math';
 import { dampingFor, spring, springSnap, springStep } from '../src/scene/characters/spring';
 
 test('a spring that starts at the target stays there', () => {
@@ -108,5 +109,31 @@ test('a spring moves towards its target and not away from it', () => {
     springStep(state, 1, 60, dampingFor(60, 1), 16);
     assert.ok(state.value >= previous - 1e-9, `the spring went backwards to ${state.value}`);
     previous = state.value;
+  }
+});
+
+// The damp is the other way the animation is smoothed: a value that moves a
+// fraction of the way to its target each frame. It has to behave the same
+// on a slow screen and on a fast one, too.
+
+test('damp does not depend on the frame rate', () => {
+  let slow = 0;
+  for (let frame = 0; frame < 30; frame += 1) slow = damp(slow, 1, 8, 33.3);
+
+  let fast = 0;
+  for (let frame = 0; frame < 60; frame += 1) fast = damp(fast, 1, 8, 16.67);
+
+  assert.ok(
+    Math.abs(slow - fast) / fast < 0.01,
+    `30 steps of 33.3 ms gave ${slow}, 60 steps of 16.67 ms gave ${fast}`,
+  );
+});
+
+test('damp never overshoots and never goes backwards', () => {
+  let value = 0;
+  for (let frame = 0; frame < 100; frame += 1) {
+    const next = damp(value, 1, 8, 16.67);
+    assert.ok(next > value && next <= 1, `damp went from ${value} to ${next}`);
+    value = next;
   }
 });
