@@ -802,3 +802,86 @@ def test_a_subagent_still_names_its_session_after_the_session_has_gone():
     assert registry.get("session:s1") is None
     payload = registry.payload(registry.get("sub:a1"))
     assert payload["session_name"] == "mediaorganizer-77"
+
+
+def test_the_model_and_the_effort_reach_the_browser():
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="session:s1",
+            kind=AgentKind.SESSION,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.IDLE,
+            model="claude-opus-5-5",
+            effort="medium",
+        )
+    )
+    payload = registry.payload(registry.get("session:s1"))
+    assert payload["model"] == "claude-opus-5-5"
+    assert payload["effort"] == "medium"
+
+
+def test_an_event_without_a_model_does_not_take_the_model_away():
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="session:s1",
+            kind=AgentKind.SESSION,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.IDLE,
+            model="claude-opus-5-5",
+        )
+    )
+    registry.apply(
+        AgentEvent.new(
+            type="note",
+            agent_id="session:s1",
+            kind=AgentKind.SESSION,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.WORKING,
+            tool_name="Bash",
+        )
+    )
+    assert registry.get("session:s1").model == "claude-opus-5-5"
+
+
+def test_the_disk_may_change_the_model_of_a_session():
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="session:s1",
+            kind=AgentKind.SESSION,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.IDLE,
+            model="claude-opus-5-5",
+        )
+    )
+    # The session changed its model with /model: the transcript knows it.
+    changed = registry.refresh_facts("session:s1", model="claude-haiku-5-5")
+
+    assert changed is not None
+    assert registry.get("session:s1").model == "claude-haiku-5-5"
+
+
+def test_a_fact_that_did_not_change_says_nothing():
+    registry = AgentRegistry()
+    registry.apply(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="session:s1",
+            kind=AgentKind.SESSION,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.IDLE,
+            model="claude-opus-5-5",
+        )
+    )
+    assert registry.refresh_facts("session:s1", model="claude-opus-5-5") is None
+    assert registry.refresh_facts("session:unknown", model="claude-opus-5-5") is None

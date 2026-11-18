@@ -167,7 +167,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 # The journal is kept for a while and then thrown away, so
                 # it cannot grow into something nobody wants to keep.
                 journal.prune()
-                changed = reconcile(registry, settings.claude_dir)
+                # The disk is read in a thread: a transcript is big, and
+                # the event loop must not wait for it.
+                changed = await asyncio.to_thread(reconcile, registry, settings.claude_dir)
                 # The disk is the truth in both directions: what it has is
                 # merged in, and what it does not have any more goes out.
                 changed.extend(
@@ -206,7 +208,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         registry.set_exit_hook(_scene_exit_hook(scene))
 
         try:
-            recovered = reconcile(registry, settings.claude_dir)
+            recovered = await asyncio.to_thread(reconcile, registry, settings.claude_dir)
             if recovered:
                 log.info("recovered %s agents from disk", recovered)
         except Exception as error:

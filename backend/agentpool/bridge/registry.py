@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any, Callable, Deque, Dict, List, Optional
 
 from .events import AgentEvent, AgentKind, AgentStatus
@@ -33,6 +35,23 @@ _PLACEHOLDER_BY_KIND = {
     AgentKind.WORKFLOW: "task",
     AgentKind.MCP: "",
 }
+
+
+def _locked(method):
+    """Run a method of the registry under its lock.
+
+    The registry is written by two threads — the event loop applies the
+    hooks, the reconciler applies what the disk says — and the methods
+    that touch the agents are the ones that must not run at the same
+    time. The lock is re-entrant, so a method may call another.
+    """
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 def is_placeholder(label: Optional[str]) -> bool:
@@ -84,6 +103,18 @@ class AgentState:
     # What the agent is doing right now. It is cleared when the agent's
     # turn ends, so a finished agent never shows a tool it no longer runs.
     activity: Optional[str] = None
+    # The model the agent runs on ("claude-opus-5-5"). The hooks say which
+    # model a session started on, and the transcript says which one it runs
+    # on now.
+    model: Optional[str] = None
+    # The reasoning effort the agent works at ("medium", "high").
+    effort: Optional[str] = None
+    # The tokens of the last turn: what went in (the context and the
+    # cache) and what came out.
+    tokens_in: Optional[int] = None
+    tokens_out: Optional[int] = None
+    # The tokens the agent has used in all.
+    tokens_total: Optional[int] = None
     cwd: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     last_event_at: float = field(default_factory=time.time)
@@ -141,6 +172,11 @@ class AgentState:
             "description": self.description,
             "prompt": self.prompt,
             "activity": self.activity,
+            "model": self.model,
+            "effort": self.effort,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "tokens_total": self.tokens_total,
             "session_id": self.session_id,
             "parent_id": self.parent_id,
             "tool_use_id": self.tool_use_id,
@@ -194,11 +230,17 @@ class AgentRegistry:
         self._exit_grace_s = exit_grace_s
         self._max_agents = max_agents
         self._clock = clock
+        # The registry is written by two threads: the event loop applies
+        # the hooks, and the reconciler applies what the disk says. The
+        # lock keeps them from writing over one another: without it, the
+        # sweeper can drop an agent that the disk has just brought back.
+        self._lock = threading.RLock()
         # Called with the id of an agent that leaves the registry because
         # the scene acknowledged its exit, so the scene can give its place
         # back. The sweeper does not use it: it talks to the scene itself.
         self._exit_hook: Optional[Callable[[str], None]] = None
 
+    @_locked
     def set_exit_hook(self, hook: Callable[[str], None]) -> None:
         """Register the callback for the agents that leave the registry.
 
@@ -211,12 +253,15 @@ class AgentRegistry:
 
     # -- queries -----------------------------------------------------
 
+    @_locked
     def snapshot(self) -> List[AgentState]:
         return list(self._agents.values())
 
+    @_locked
     def get(self, agent_id: str) -> Optional[AgentState]:
         return self._agents.get(agent_id)
 
+    @_locked
     def payload(self, state: AgentState) -> Dict[str, Any]:
         """The payload of one agent, with what it takes from its parent."""
         parent = self._agents.get(state.parent_id) if state.parent_id else None
@@ -230,11 +275,13 @@ class AgentRegistry:
         )
         return payload
 
+    @_locked
     def __len__(self) -> int:
         return len(self._agents)
 
     # -- mutation ----------------------------------------------------
 
+    @_locked
     def apply(self, event: AgentEvent) -> List[AgentState]:
         """Apply one event and return the agents it changed."""
         # An MCP server is not an agent. Its calls are shown on the session
@@ -345,6 +392,41 @@ class AgentRegistry:
 
         return []
 
+    @_locked
+    def refresh_facts(
+        self,
+        agent_id: str,
+        *,
+        model: Optional[str] = None,
+        tokens_in: Optional[int] = None,
+        tokens_out: Optional[int] = None,
+        tokens_total: Optional[int] = None,
+    ) -> Optional[AgentState]:
+        """Write the facts the disk knows and the hooks do not carry.
+
+        The model and the token counts are the disk's business: a session
+        can change its model while it runs (``/model``), and only its
+        transcript knows it. The write is idempotent — a round that finds
+        nothing new changes nothing and says nothing — so the browser is
+        not woken up for a fact it already has.
+        """
+        state = self._agents.get(agent_id)
+        if state is None:
+            return None
+        changed = False
+        for name, value in (
+            ("model", model),
+            ("tokens_in", tokens_in),
+            ("tokens_out", tokens_out),
+            ("tokens_total", tokens_total),
+        ):
+            if value is None:
+                continue
+            if getattr(state, name) != value:
+                setattr(state, name, value)
+                changed = True
+        return state if changed else None
+
     def _upsert(self, event: AgentEvent, now: float) -> AgentState:
         state = self._agents.get(event.agent_id)
         if state is None:
@@ -362,6 +444,11 @@ class AgentRegistry:
                 description=event.description,
                 prompt=event.prompt,
                 activity=event.activity,
+                model=event.model,
+                effort=event.effort,
+                tokens_in=event.tokens_in,
+                tokens_out=event.tokens_out,
+                tokens_total=event.tokens_total,
                 cwd=event.cwd,
                 created_at=now,
                 last_event_at=now,
@@ -388,6 +475,18 @@ class AgentRegistry:
             state.prompt = event.prompt
         if event.tool_use_id:
             state.tool_use_id = event.tool_use_id
+        # The model and the effort are facts, not states: an event that
+        # does not carry one does not take the one the agent has away.
+        if event.model:
+            state.model = event.model
+        if event.effort:
+            state.effort = event.effort
+        if event.tokens_in is not None:
+            state.tokens_in = event.tokens_in
+        if event.tokens_out is not None:
+            state.tokens_out = event.tokens_out
+        if event.tokens_total is not None:
+            state.tokens_total = event.tokens_total
         state.last_event_at = now
         state.event_count += 1
         state.last_events.append(
@@ -404,6 +503,7 @@ class AgentRegistry:
 
     # -- expiry ------------------------------------------------------
 
+    @_locked
     def sweep(self, now: Optional[float] = None) -> List[AgentState]:
         """Expire stale agents. Returns the agents that changed."""
         now = now if now is not None else self._clock()
@@ -475,6 +575,7 @@ class AgentRegistry:
                 changed.append(state)
                 overflow -= 1
 
+    @_locked
     def acknowledge_exit(self, agent_id: str) -> bool:
         """Drop an agent that has walked out of the scene.
 

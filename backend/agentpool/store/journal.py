@@ -75,6 +75,11 @@ def _agent_event(payload: Dict[str, Any]) -> Optional[AgentEvent]:
             description=payload.get("description"),
             prompt=payload.get("prompt"),
             activity=payload.get("activity"),
+            model=payload.get("model"),
+            effort=payload.get("effort"),
+            tokens_in=payload.get("tokens_in"),
+            tokens_out=payload.get("tokens_out"),
+            tokens_total=payload.get("tokens_total"),
             source=str(payload.get("source", "hook")),
             raw=payload.get("raw") or {},
         )

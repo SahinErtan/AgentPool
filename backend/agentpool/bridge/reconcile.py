@@ -15,7 +15,8 @@ from typing import Any, List, Optional
 from .events import AgentEvent, AgentKind, AgentStatus
 from .registry import AgentRegistry, AgentState
 from .sources import read_agents_cli, read_sessions, read_subagents
-from .transcript import read_agent_calls
+from .transcript import find_session_transcript, read_agent_calls
+from .usage import READER, UsageReader
 
 log = logging.getLogger("agentpool.reconcile")
 
@@ -26,6 +27,7 @@ def reconcile(
     *,
     now: Optional[float] = None,
     use_cli: bool = True,
+    usage: UsageReader = READER,
 ) -> List[AgentState]:
     """Merge the on-disk state into the registry.
 
@@ -43,7 +45,8 @@ def reconcile(
             return
         changed.extend(registry.apply(event))
 
-    for session in read_sessions(claude_dir):
+    sessions = read_sessions(claude_dir)
+    for session in sessions:
         session_id = session["session_id"]
         agent_id = f"session:{session_id}"
         working = session.get("status") == "busy"
@@ -82,7 +85,7 @@ def reconcile(
                 disk_ts,
             )
 
-    live_session_ids = {item["session_id"] for item in read_sessions(claude_dir)}
+    live_session_ids = {item["session_id"] for item in sessions}
     now_wall = time.time()
 
     # The parent transcript knows the description of every subagent, even
@@ -96,7 +99,8 @@ def reconcile(
                 for call in read_agent_calls(claude_dir, session_id)
             }
         return calls_by_session[session_id]
-    for subagent in read_subagents(claude_dir):
+    subagents = read_subagents(claude_dir)
+    for subagent in subagents:
         agent_id = f"sub:{subagent['agent_id']}"
         finished = subagent.get("finished")
         if finished:
@@ -194,7 +198,79 @@ def reconcile(
                 now,
             )
 
+    changed.extend(refresh_facts(registry, claude_dir, sessions, subagents, usage))
     return changed
+
+
+def refresh_facts(
+    registry: AgentRegistry,
+    claude_dir: Path,
+    sessions: List[Dict[str, Any]],
+    subagents: List[Dict[str, Any]],
+    usage: UsageReader,
+) -> List[AgentState]:
+    """Write the facts that come from the transcripts.
+
+    The hooks say which model a session *started* on, and only the
+    transcript knows which one it runs on now — ``/model`` changes it while
+    the session runs. The same transcript says how many tokens the turns
+    cost.
+
+    A fact that is not there is not written: an agent whose transcript
+    cannot be read keeps what it has.
+    """
+    changed: List[AgentState] = []
+
+    for session in sessions:
+        session_id = session["session_id"]
+        if registry.get(f"session:{session_id}") is None:
+            # The agent is not in the pool: its transcript is not read.
+            continue
+        transcript = find_session_transcript(claude_dir, session_id)
+        if transcript is None:
+            continue
+        facts = usage.read(f"session:{session_id}", transcript)
+        if facts is None:
+            continue
+        state = registry.refresh_facts(
+            f"session:{session_id}",
+            model=facts.model,
+            tokens_in=facts.tokens_in,
+            tokens_out=facts.tokens_out,
+            tokens_total=facts.tokens_total,
+        )
+        if state is not None:
+            changed.append(state)
+
+    for subagent in subagents:
+        agent_id = subagent["agent_id"]
+        if registry.get(f"sub:{agent_id}") is None:
+            # Only the agents in the pool are read: the disk keeps the
+            # transcripts of every subagent that ever ran.
+            continue
+        model = subagent.get("model")
+        transcript = _subagent_transcript(subagent)
+        facts = usage.read(f"sub:{agent_id}", transcript) if transcript else None
+        state = registry.refresh_facts(
+            f"sub:{agent_id}",
+            model=(facts.model if facts and facts.model else model),
+            tokens_in=facts.tokens_in if facts else None,
+            tokens_out=facts.tokens_out if facts else None,
+            tokens_total=facts.tokens_total if facts else None,
+        )
+        if state is not None:
+            changed.append(state)
+
+    return changed
+
+
+def _subagent_transcript(subagent: Dict[str, Any]) -> Optional[Path]:
+    """The transcript of a subagent: it lies next to its metadata file."""
+    meta_path = subagent.get("meta_path")
+    if not meta_path:
+        return None
+    path = Path(meta_path).parent / f"agent-{subagent['agent_id']}.jsonl"
+    return path if path.exists() else None
 
 
 # -- what is gone ----------------------------------------------------

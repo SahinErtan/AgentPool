@@ -158,19 +158,48 @@ def summarize_tool(tool_name: Optional[str], tool_input: Any) -> Optional[str]:
     return _clip(summary)
 
 
+def _effort_level(raw: RawHook) -> Optional[str]:
+    """The reasoning effort a payload reports.
+
+    The effort comes as a small object: ``{"level": "medium"}``. A payload
+    without one says nothing about the effort, and an empty level is not a
+    fact either.
+    """
+    effort = raw.o("effort")
+    if not effort:
+        return None
+    level = effort.get("level")
+    return level if isinstance(level, str) and level else None
+
+
 def normalize(payload: dict) -> List[BridgeEvent]:
     """Convert one raw hook payload into zero or more normalised events.
 
     Every agent event carries the payload's folder: the folder is what the
     person sees in the inspector, and the registry gives it to the subagents
     that do not send one of their own.
+
+    The same goes for the model and the effort. The payload of a session
+    start names the model, and the payload of a tool call names the effort
+    the agent works at; both are facts about the agent, so they ride along
+    with every event the payload produces.
     """
     events = _normalise(payload)
-    cwd = RawHook(payload).s("cwd")
-    if not cwd:
+    raw = RawHook(payload)
+    cwd = raw.s("cwd")
+    model = raw.s("model")
+    effort = _effort_level(raw)
+    if not (cwd or model or effort):
         return events
     return [
-        replace(item, cwd=cwd) if isinstance(item, AgentEvent) else item
+        replace(
+            item,
+            cwd=cwd or item.cwd,
+            model=model or item.model,
+            effort=effort or item.effort,
+        )
+        if isinstance(item, AgentEvent)
+        else item
         for item in events
     ]
 

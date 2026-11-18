@@ -79,6 +79,16 @@ export interface AgentView {
    * still says whose it is.
    */
   session_name?: string | null;
+  /** The model the agent runs on, as the backend names it. */
+  model?: string | null;
+  /** The reasoning effort the agent works at: "medium", "high". */
+  effort?: string | null;
+  /** The tokens of the last turn: the context that was sent. */
+  tokens_in?: number | null;
+  /** The tokens of the last turn: what came out. */
+  tokens_out?: number | null;
+  /** The tokens the agent has used in all. */
+  tokens_total?: number | null;
 }
 
 export interface SessionEventView {

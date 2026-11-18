@@ -322,3 +322,73 @@ def test_a_session_named_on_the_disk_keeps_that_name_through_its_hooks(tmp_path:
                 registry.apply(event)
 
     assert registry.get("session:s1").label == "pool-scene-3d-sprint"
+
+
+def write_transcript(claude_dir: Path, session_id: str, model: str, tokens: int) -> Path:
+    """A transcript with one assistant turn in it."""
+    directory = claude_dir / "projects" / "tmp-project"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{session_id}.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "model": model,
+                    "usage": {
+                        "input_tokens": tokens,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "output_tokens": 20,
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_a_session_gets_its_model_and_its_tokens_from_the_transcript(tmp_path: Path) -> None:
+    write_session(tmp_path, "s1", "busy", time.time())
+    write_transcript(tmp_path, "s1", "claude-opus-5-5", 1200)
+    registry = AgentRegistry()
+
+    reconcile(registry, tmp_path, use_cli=False)
+
+    state = registry.get("session:s1")
+    assert state is not None
+    assert state.model == "claude-opus-5-5"
+    assert state.tokens_in == 1200
+    assert state.tokens_out == 20
+    assert state.tokens_total == 1220
+
+
+def test_a_subagent_gets_its_model_from_the_metadata_file(tmp_path: Path) -> None:
+    write_session(tmp_path, "s1", "busy", time.time())
+    directory = tmp_path / "projects" / "tmp-project" / "s1" / "subagents"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "agent-abc123.meta.json").write_text(
+        json.dumps(
+            {
+                "agentType": "Explore",
+                "description": "look around",
+                "toolUseId": "toolu_1",
+                "finished": False,
+                "pickedEffortModel": "MiniMax-M3.1-Flash",
+            }
+        ),
+        encoding="utf-8",
+    )
+    import os
+
+    os.utime(directory / "agent-abc123.meta.json", (time.time(), time.time()))
+    registry = AgentRegistry()
+
+    reconcile(registry, tmp_path, use_cli=False)
+
+    state = registry.get("sub:abc123")
+    assert state is not None
+    assert state.model == "MiniMax-M3.1-Flash"

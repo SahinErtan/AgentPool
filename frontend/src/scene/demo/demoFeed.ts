@@ -654,6 +654,9 @@ export function demoAgents(n: number, nowS: number, state: DemoState): AgentView
       description: slot.description,
       prompt: slot.prompt,
       activity,
+      model: modelOf(p.id),
+      effort: effortOf(p.id),
+      ...tokensOf(p.id),
     };
   });
   return agents;
@@ -664,6 +667,54 @@ function activityOf(tool: string, index: number): string {
   const samples = ACTIVITY[tool];
   if (!samples) return tool;
   return samples[index % samples.length];
+}
+
+/** The models the demo agents run on. */
+const MODELS = [
+  'claude-opus-5-5',
+  'claude-sonnet-5-5',
+  'claude-haiku-5-5',
+  'MiniMax-M3.1-Flash',
+];
+
+/** The efforts the demo agents work at. */
+const EFFORTS = ['medium', 'high'];
+
+/**
+ * A stable number for an id.
+ *
+ * The demo has to look the same every time it is opened, so the model of
+ * an agent is worked out from its id and not from a random number.
+ */
+function hashOf(text: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash);
+}
+
+/** The model of a demo agent. */
+function modelOf(id: string): string {
+  return MODELS[hashOf(id) % MODELS.length];
+}
+
+/** The effort of a demo agent. */
+function effortOf(id: string): string {
+  return EFFORTS[Math.floor(hashOf(id) / 7) % EFFORTS.length];
+}
+
+/** The tokens of the last turn of a demo agent, and the ones it used in all. */
+function tokensOf(id: string): { tokens_in: number; tokens_out: number; tokens_total: number } {
+  const hash = hashOf(id);
+  const tokensIn = 24000 + (hash % 96000);
+  const tokensOut = 180 + (hash % 3200);
+  return {
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    tokens_total: tokensIn * 3 + tokensOut * 4,
+  };
 }
 
 /** The presentation of one agent: where it is and what it is doing. */

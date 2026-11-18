@@ -266,3 +266,32 @@ def test_a_label_the_event_did_not_name_is_not_written_as_none_text(tmp_path: Pa
     registry = AgentRegistry()
     asyncio.run(journal.replay_into(registry))
     assert registry.get("session:s9").label == "main"
+
+
+def test_a_replay_keeps_the_model_and_the_effort(tmp_path: Path) -> None:
+    import asyncio
+
+    from agentpool.bridge.events import AgentEvent, AgentKind, AgentStatus
+    from agentpool.bridge.registry import AgentRegistry
+
+    journal = Journal(tmp_path, keep_days=7)
+    journal.append(
+        AgentEvent.new(
+            type="spawned",
+            agent_id="session:s1",
+            kind=AgentKind.SESSION,
+            session_id="s1",
+            parent_id=None,
+            status=AgentStatus.IDLE,
+            model="claude-opus-5-5",
+            effort="medium",
+            source="hook",
+        )
+    )
+
+    registry = AgentRegistry()
+    asyncio.run(journal.replay_into(registry))
+
+    session = registry.get("session:s1")
+    assert session.model == "claude-opus-5-5"
+    assert session.effort == "medium"

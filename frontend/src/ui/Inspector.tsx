@@ -4,6 +4,7 @@ import { store } from '../state/store';
 import { useStore } from '../state/useStore';
 import { cutAtWord, plainText } from '../scene/text';
 import { agentNames, projectOf } from '../scene/names';
+import { prettyModel, prettyTokens, prettyTurn } from '../scene/model';
 
 function formatTime(seconds: number | null): string {
   if (!seconds) return '—';
@@ -96,6 +97,9 @@ export function Inspector() {
   const project = projectOf(agent);
   const promptText = agent.prompt ? plainText(agent.prompt) : '';
   const description = agent.description ? agent.description.replace(/\s+/g, ' ').trim() : '';
+  // The tokens of the last turn. A row that has no number in it is not
+  // shown at all: an empty row says less than no row.
+  const turn = prettyTurn(agent.tokens_in, agent.tokens_out);
 
   return (
     <section
@@ -131,6 +135,28 @@ export function Inspector() {
 
       <div className="inspector__body">
         <Row label="Kind" value={agent.kind} />
+        {agent.model ? (
+          <Row label="Model" value={prettyModel(agent.model)} title={agent.model} />
+        ) : null}
+        {agent.effort ? <Row label="Effort" value={agent.effort} /> : null}
+        {turn ? (
+          <Row
+            label="Tokens (last turn)"
+            value={turn}
+            title={
+              agent.tokens_in !== null && agent.tokens_in !== undefined
+                ? `${agent.tokens_in} in · ${agent.tokens_out ?? 0} out`
+                : undefined
+            }
+          />
+        ) : null}
+        {agent.tokens_total ? (
+          <Row
+            label="Tokens used"
+            value={prettyTokens(agent.tokens_total)}
+            title={String(agent.tokens_total)}
+          />
+        ) : null}
         <Row label="Status" value={agent.status} />
         <Row label="Scene" value={agent.scene} />
         <Row label="Slot" value={slotOf(agent, props)} />

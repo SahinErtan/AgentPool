@@ -57,6 +57,18 @@ class AgentEvent:
     prompt: Optional[str] = None
     # What the agent is doing right now, in a few words ("Bash: npm test").
     activity: Optional[str] = None
+    # The model the agent runs on ("claude-opus-5-5"). The payload of a
+    # session start carries it, and the transcript of a running session
+    # carries it again when the model changes.
+    model: Optional[str] = None
+    # The reasoning effort the agent runs on ("medium", "high").
+    effort: Optional[str] = None
+    # The tokens of the last turn: what went in (the context and the
+    # cache) and what came out.
+    tokens_in: Optional[int] = None
+    tokens_out: Optional[int] = None
+    # The tokens the agent has used in all.
+    tokens_total: Optional[int] = None
     source: str = "hook"  # hook | reconcile | transcript
     raw: Dict[str, Any] = field(default_factory=dict)
 

@@ -27,6 +27,24 @@ hook input JSON.
 - `cwd` — the folder the session works in.
 - `prompt` — the text of the prompt, kept as the detail of the agent.
 - `source` — on `SessionStart`: `startup`, `resume` or `clear`.
+- `model` — on `SessionStart`: the model the session runs on. It is the
+  model the session *started* on: `/model` changes it while the session
+  runs, and the transcript is what says which one it runs on now.
+- `effort` — on the tool calls and on `Stop`: the reasoning effort the
+  agent works at, as `{"level": "medium"}`.
+
+## The payload is not the whole truth
+
+Two things the pool shows do not come from a hook at all:
+
+- **The model of a running session.** The transcript of the session names
+  the model of its last assistant turn, and that is the one that is
+  current. The reconciler reads it every 30 seconds.
+- **The model of a subagent.** Its hook payload has none; the metadata
+  file next to its transcript does: `pickedEffortModel`.
+
+The token counts come from the same place: the usage of the last
+assistant turn is the context that was sent and what came out of it.
 
 ## The description arrives late
 

@@ -350,3 +350,40 @@ def test_a_message_the_harness_put_in_is_not_the_last_prompt():
     payload["prompt"] = "check how far Sprint 28 got"
     started = [event for event in agent_events(payload) if event.type == "started"]
     assert started[0].prompt == "check how far Sprint 28 got"
+
+
+def test_the_model_of_a_session_start_rides_on_the_event():
+    # Captured from a real run: the payload of a session start names the
+    # model the session runs on.
+    payload = {
+        "cwd": "/tmp/hooktest",
+        "hook_event_name": "SessionStart",
+        "session_id": "d1307310-8bf6-43f3-b935-49356082cb89",
+        "source": "startup",
+        "model": "claude-opus-5-5",
+    }
+    events = agent_events(payload)
+    assert events[0].model == "claude-opus-5-5"
+
+
+def test_the_effort_of_a_tool_call_rides_on_the_event():
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "s1",
+        "tool_name": "Bash",
+        "tool_use_id": "call-1",
+        "effort": {"level": "high"},
+    }
+    notes = [event for event in agent_events(payload) if event.type == "note"]
+    assert notes[0].effort == "high"
+
+
+def test_a_payload_without_a_model_says_nothing():
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": "s1",
+        "source": "startup",
+    }
+    events = agent_events(payload)
+    assert events[0].model is None
+    assert events[0].effort is None

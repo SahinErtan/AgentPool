@@ -30,9 +30,10 @@ again.
 | 11 | More idle activities | Each one needs a prop and a pose | medium |
 | 12 | The camera, a pool that grows | Polish; nice, not needed | medium |
 | 13 | Licence, GitHub, CI, release | Only worth it when there is something to share | medium |
+| 14 | The model of an agent | The hooks already say which model an agent runs | small |
 
 Items 1–3 were Sprint 9. Items 4–8 were Sprint 10, the dashboard. Items 9–12
-are the pool, Sprint 11. Item 13 is the packaging.
+are the pool, Sprint 11. Item 13 is the packaging. Item 14 is Sprint 31.
 
 The three sprints below come **before** the packaging, because they are about
 correctness. The packaging is last, as it always was.
@@ -1201,6 +1202,53 @@ deck walkers need a separation rule of their own, and the demo needs a
 session that ends. The second one is done in this round: the demo's
 sessions now end, walk out through the gate, and the next one walks in.
 
+## Sprint 31 — what the hooks already know
+
+Planned in `docs/plans/sprint-31-what-the-hooks-know.md`, carried out on
+2026-11-18.
+
+A person watching the pool wants to know one thing about an agent before
+anything else: **which model is it running on**. The pool could not say it,
+although Claude Code says it in every session's own payload: the
+`SessionStart` hook carries a `model` field, and the value has been in the
+journal all along. The reason was a missing step, not a missing feature —
+the bridge keeps the whole payload in `raw`, `raw` never leaves the
+backend, and the registry had no field for the model, so nothing went out
+to the browser.
+
+- **The model of a session.** `SessionStart` says which model the session
+  started on. `SessionStart` is not the only word on it: `/model` changes
+  the model of a running session, and the truth after that is the
+  transcript, whose last assistant turn names the model it was answered
+  with. The reconciler refreshes it every 30 s.
+- **The model of a subagent.** Its hook payload has none, but its meta
+  file does: `pickedEffortModel`. `sources.py` already read that value
+  and the reconciler was what threw it away.
+- **The effort.** The payload of a tool call names the effort the agent
+  works at: `{"level": "medium"}`.
+- **The tokens.** The last turn's context (the fresh tokens, the ones
+  read from the cache and the ones written into it) and what came out of
+  it, and the tokens the agent has used in all. The cache that is read
+  again is not counted twice: a session of half an hour said eleven
+  million tokens when it was counted, and half a million when it was not.
+- **The transcript is read once whole, and then only the new lines.** A
+  transcript is big, so the reader keeps the offset it stopped at. Only
+  the agents that are in the pool are read: the disk keeps the
+  transcripts of every subagent that ever ran, and reading all of them
+  took the reconciler from 0.07 s to 4.7 s.
+- **A fact that is not there is not shown.** The inspector shows the rows
+  it has and leaves the rest out. A column of dashes is noise.
+
+Measured on the live pool: a session of this machine reads "MiniMax M3.1
+Flash", "medium", "153 k in · 102 out" and "902 k". The demo shows the
+same rows with fake numbers. 193 backend tests and 472 frontend tests
+pass.
+
+Not done yet, and written down so it is not lost: the permission mode, the
+duration of the last tool, the MCP server, the size of the context and the
+cost of writing the cache again, and whether the session was started,
+resumed, compacted or forked. They are all in the payload already.
+
 ## Why this order
 
 The click first, because the plan promised it and it is the thing a person
@@ -1258,6 +1306,8 @@ What is left of Sprint 20, in the order I would take it:
 - **The demo needs a session that ends**, so that the gate celebration
   (confetti by day, fireworks at night) can be seen without a real
   backend. (Done in Sprint 30.)
+- **The model of an agent.** The hooks already carry it; the pool throws
+  it away. (Sprint 31.)
 
 After that comes **the living pool, Sprints 21 to 27**, planned step by
 step in `docs/plans/` (start with `docs/plans/README.md`). Each sprint's
